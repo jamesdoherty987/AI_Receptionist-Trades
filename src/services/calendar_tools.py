@@ -237,6 +237,35 @@ CALENDAR_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "update_customer_info",
+            "description": "Update a customer's account information (address, email, phone) WITHOUT needing a specific booking. Use when a returning customer wants to change their details on file. The customer is already identified by their phone number. IMPORTANT: You MUST ask the customer what the NEW value is before calling this. Do NOT pass the old value or a placeholder.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_name": {
+                        "type": "string",
+                        "description": "Customer name (from phone lookup or conversation)"
+                    },
+                    "new_address": {
+                        "type": "string",
+                        "description": "New address if customer wants to change it"
+                    },
+                    "new_email": {
+                        "type": "string",
+                        "description": "New email if customer wants to change it"
+                    },
+                    "new_phone": {
+                        "type": "string",
+                        "description": "New phone number if customer wants to change it"
+                    }
+                },
+                "required": ["customer_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "modify_job",
             "description": "Modify details of an existing job/appointment. Use when customer wants to change the address, job description, or other details of a booking WITHOUT changing the time. IMPORTANT: You MUST have the ACTUAL new value from the customer before calling this. Do NOT pass placeholder text like 'Please provide the new address' — ask the customer first, get their answer, THEN call this function. WORKFLOW: 1) Ask the customer what date/time their booking is for. 2) Ask what they want to change. 3) Get the NEW value from them (e.g. 'What's the new address?'). 4) Call this function with appointment_datetime, customer_name, and the actual new value.",
             "parameters": {
@@ -6063,6 +6092,126 @@ Return ONLY valid JSON, no explanation."""
             }
             return execute_tool_call("reschedule_appointment", mapped_args, services)
         
+        elif tool_name == "update_customer_info":
+            """Update customer account information without needing a specific booking"""
+            logger.info(f"[UPDATE_CUSTOMER] ========== UPDATING CUSTOMER INFO ==========")
+            customer_name = arguments.get('customer_name')
+            new_address = arguments.get('new_address')
+            new_email = arguments.get('new_email')
+            new_phone = arguments.get('new_phone')
+            
+            if not customer_name:
+                return {"success": False, "error": "Customer name is required."}
+            
+            if not db:
+                return {"success": False, "error": "Database service is not available."}
+            
+            # Validate no placeholders
+            _placeholder_phrases = ["please provide", "new address", "ask the customer", "not provided", "n/a", "tbd", "your new"]
+            if new_address and any(p in new_address.lower() for p in _placeholder_phrases):
+                return {
+                    "success": False,
+                    "error": "You passed a placeholder instead of an actual value. Ask the customer: 'What's the new address?' and wait for their response."
+                }
+            
+            has_updates = any([new_address, new_email, new_phone])
+            if not has_updates:
+                return {
+                    "success": False,
+                    "error": "No changes specified. Ask the customer what they'd like to update (address, email, or phone) and what the new value should be."
+                }
+            
+            # Find the client by name
+            clients = db.get_clients_by_name(customer_name.lower(), company_id=company_id)
+            if not clients:
+                # Try phone from call_state
+                if call_state:
+                    _phone = getattr(call_state, 'phone_number', None)
+                    if _phone:
+                        client = db.find_client_by_phone(_phone, company_id=company_id)
+                        if client:
+                            clients = [client]
+            
+            if not clients:
+                return {"success": False, "error": f"Could not find customer '{customer_name}' in the system."}
+            
+            client = clients[0]
+            client_id = client['id']
+            
+            # Check if new_address is same as current
+            if new_address:
+                _current_addr = (client.get('address') or '').strip().rstrip('.')
+                _new_addr = new_address.strip().rstrip('.')
+                if _current_addr and _current_addr.lower() == _new_addr.lower():
+                    return {
+                        "success": False,
+                        "error": f"That's the same address already on file ({_current_addr}). Ask the customer: 'What would you like to change the address to?'"
+                    }
+            
+            # Build update
+            client_update = {}
+            changes_made = []
+            
+            if new_address:
+                address_validator = AddressValidator()
+                address_data = address_validator.parse_address_input(new_address)
+                if address_data['needs_clarification']:
+                    return {
+                        "success": False,
+                        "error": address_data['suggestions'][0] if address_data['suggestions'] else "Please provide a more complete address."
+                    }
+                client_update['address'] = address_data['full_address']
+                if address_data.get('eircode'):
+                    client_update['eircode'] = address_data['eircode']
+                changes_made.append(f"address to {address_data['full_address']}")
+            
+            if new_email:
+                client_update['email'] = new_email
+                changes_made.append(f"email to {new_email}")
+            
+            if new_phone:
+                client_update['phone'] = new_phone
+                changes_made.append(f"phone to {new_phone}")
+            
+            try:
+                db.update_client(client_id, **client_update)
+                
+                # Save address audio if captured
+                if new_address and call_state:
+                    audio_url = getattr(call_state, 'address_audio_url', None)
+                    if audio_url:
+                        # Update all upcoming bookings for this client with the new address + audio
+                        try:
+                            all_bookings = db.get_all_bookings(company_id=company_id)
+                            from datetime import datetime as dt_cls
+                            now = dt_cls.now()
+                            for booking in all_bookings:
+                                if booking.get('client_id') == client_id:
+                                    appt = booking.get('appointment_time')
+                                    if appt:
+                                        if isinstance(appt, str):
+                                            appt = dt_cls.fromisoformat(appt.replace('Z', '+00:00')).replace(tzinfo=None)
+                                        if appt >= now:
+                                            db.update_booking(booking['id'], address=client_update.get('address', new_address), address_audio_url=audio_url)
+                            logger.info(f"[UPDATE_CUSTOMER] 🎙️ Updated upcoming bookings with new address + audio")
+                        except Exception as bk_err:
+                            logger.warning(f"[UPDATE_CUSTOMER] Could not update bookings: {bk_err}")
+                
+                changes_summary = ", ".join(changes_made)
+                logger.info(f"[UPDATE_CUSTOMER] ✅ Updated client {client_id}: {changes_summary}")
+                
+                tool_duration = time_module.time() - tool_start_time
+                print(f"[TOOL_TIMING] ✅ update_customer_info completed in {tool_duration:.3f}s")
+                
+                return {
+                    "success": True,
+                    "message": f"Updated {customer_name}'s account: {changes_summary}.",
+                    "changes": changes_made
+                }
+            except Exception as e:
+                logger.error(f"[UPDATE_CUSTOMER] Error: {e}")
+                return {"success": False, "error": f"Failed to update customer info: {str(e)}"}
+        
         elif tool_name == "modify_job":
             """Modify details of an existing job without changing the time"""
             logger.info(f"[MODIFY_JOB] ========== MODIFYING JOB ==========")
@@ -6164,12 +6313,21 @@ Return ONLY valid JSON, no explanation."""
             
             # Customer name confirmed - check if any updates were provided
             # Filter out placeholder values the LLM sometimes passes instead of actual data
-            _placeholder_phrases = ["please provide", "new address", "ask the customer", "not provided", "n/a", "tbd"]
+            _placeholder_phrases = ["please provide", "new address", "ask the customer", "not provided", "n/a", "tbd", "your new address"]
             if new_address and any(p in new_address.lower() for p in _placeholder_phrases):
                 return {
                     "success": False,
                     "error": "You passed a placeholder instead of an actual address. Ask the customer: 'What's the new address?' and wait for their response before calling modify_job again."
                 }
+            # Check if the "new" address is the same as the current one — LLM sometimes passes the existing address
+            if new_address and current_booking:
+                _current_addr = (current_booking.get('address') or '').strip().rstrip('.')
+                _new_addr = new_address.strip().rstrip('.')
+                if _current_addr and _current_addr.lower() == _new_addr.lower():
+                    return {
+                        "success": False,
+                        "error": f"That's the same address already on file ({_current_addr}). Ask the customer: 'What would you like to change the address to?' and wait for their new address."
+                    }
             has_updates = any([new_address, new_job_description, new_phone, new_email, new_urgency])
             if not has_updates:
                 return {
@@ -6317,6 +6475,16 @@ Return ONLY valid JSON, no explanation."""
                             logger.info(f"[MODIFY_JOB] ✅ Also updated client {client_id} address on file")
                     except Exception as client_err:
                         logger.warning(f"[MODIFY_JOB] Could not update client address: {client_err}")
+                    
+                    # Save address audio recording to the booking if captured during this call
+                    if call_state:
+                        audio_url = getattr(call_state, 'address_audio_url', None)
+                        if audio_url:
+                            try:
+                                db.update_booking(booking_id, address_audio_url=audio_url)
+                                logger.info(f"[MODIFY_JOB] 🎙️ Address audio saved to booking {booking_id}: {audio_url}")
+                            except Exception as audio_err:
+                                logger.warning(f"[MODIFY_JOB] ⚠️ Could not save address audio: {audio_err}")
                 
                 # Add a note about the modification
                 changes_summary = ", ".join(changes_made)

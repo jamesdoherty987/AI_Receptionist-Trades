@@ -2735,6 +2735,21 @@ TOOL RULES:
                     
                     print(f"   ⚡ [DIRECT] reschedule -> '{direct_response[:50]}...'")
                 
+                # ========== UPDATE_CUSTOMER_INFO ==========
+                elif tool_name == "update_customer_info":
+                    if result_content.get("success"):
+                        direct_response = "I've updated that for you. Anything else?"
+                    else:
+                        _error_msg = result_content.get("error", "")
+                        if "placeholder" in _error_msg or "ask the customer" in _error_msg.lower() or "no changes specified" in _error_msg.lower() or "same address" in _error_msg.lower():
+                            direct_response = None  # Let LLM see the error and ask the customer
+                            print(f"   🚫 [DIRECT] update_customer_info needs more info — passing error to LLM")
+                        else:
+                            direct_response = _error_msg or "I couldn't update that. Could you try again?"
+                    
+                    if direct_response:
+                        print(f"   ⚡ [DIRECT] update_customer_info -> '{direct_response[:50]}...'")
+                
                 # ========== MODIFY_JOB ==========
                 elif tool_name == "modify_job":
                     if result_content.get("success"):
@@ -2754,7 +2769,7 @@ TOOL RULES:
                     else:
                         # Check if this is a placeholder/instruction error — let LLM see it
                         _error_msg = result_content.get("error", "")
-                        if "placeholder" in _error_msg or "ask the customer" in _error_msg.lower() or "no changes specified" in _error_msg.lower():
+                        if "placeholder" in _error_msg or "ask the customer" in _error_msg.lower() or "no changes specified" in _error_msg.lower() or "same address" in _error_msg.lower():
                             direct_response = None  # Let LLM see the error and ask the customer
                             print(f"   🚫 [DIRECT] modify_job needs more info — passing error to LLM")
                         else:

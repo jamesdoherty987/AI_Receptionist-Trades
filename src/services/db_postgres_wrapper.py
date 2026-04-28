@@ -3760,9 +3760,9 @@ class PostgreSQLDatabaseWrapper:
         try:
             if company_id:
                 if active_only:
-                    cursor.execute("SELECT * FROM services WHERE (company_id = %s OR company_id IS NULL) AND active = 1 ORDER BY sort_order, category, name", (company_id,))
+                    cursor.execute("SELECT * FROM services WHERE company_id = %s AND active = 1 ORDER BY sort_order, category, name", (company_id,))
                 else:
-                    cursor.execute("SELECT * FROM services WHERE (company_id = %s OR company_id IS NULL) ORDER BY active DESC, sort_order, category, name", (company_id,))
+                    cursor.execute("SELECT * FROM services WHERE company_id = %s ORDER BY active DESC, sort_order, category, name", (company_id,))
             else:
                 if active_only:
                     cursor.execute("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, category, name")
@@ -3781,7 +3781,7 @@ class PostgreSQLDatabaseWrapper:
         
         try:
             if company_id:
-                cursor.execute("SELECT * FROM services WHERE id = %s AND (company_id = %s OR company_id IS NULL)", (service_id, company_id))
+                cursor.execute("SELECT * FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
             else:
                 cursor.execute("SELECT * FROM services WHERE id = %s", (service_id,))
             row = cursor.fetchone()
@@ -3831,8 +3831,7 @@ class PostgreSQLDatabaseWrapper:
                 values.append(service_id)
                 if company_id:
                     values.append(company_id)
-                    # Match services owned by this company OR orphaned (NULL company_id) services
-                    query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s AND (company_id = %s OR company_id IS NULL)"
+                    query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s AND company_id = %s"
                 else:
                     query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
                 cursor.execute(query, values)
@@ -3861,7 +3860,7 @@ class PostgreSQLDatabaseWrapper:
         try:
             # First get the service name to find affected jobs
             if company_id:
-                cursor.execute("SELECT name FROM services WHERE id = %s AND (company_id = %s OR company_id IS NULL)", (service_id, company_id))
+                cursor.execute("SELECT name FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
             else:
                 cursor.execute("SELECT name FROM services WHERE id = %s", (service_id,))
             
@@ -3880,7 +3879,7 @@ class PostgreSQLDatabaseWrapper:
             
             # Delete the service
             if company_id:
-                cursor.execute("DELETE FROM services WHERE id = %s AND (company_id = %s OR company_id IS NULL)", (service_id, company_id))
+                cursor.execute("DELETE FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
             else:
                 cursor.execute("DELETE FROM services WHERE id = %s", (service_id,))
             

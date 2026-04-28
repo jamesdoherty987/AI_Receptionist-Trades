@@ -931,9 +931,11 @@ async def media_handler(ws):
                         greeting_note = "Greeting already sent — generic greeting, you did NOT mention the caller's name yet."
                         name_note = (
                             f"This is a RETURNING CUSTOMER. Their name on file is {caller_customer_name} (identified from the phone number in our system). "
-                            f"Do NOT reveal their name in the greeting — wait until AFTER they describe their issue and you call match_issue. "
+                            f"Do NOT reveal their name in the greeting — wait until AFTER they describe their issue or request. "
                             f"Then say something like: 'I have the name under this number as {first_name}, is that right?' "
-                            f"If they confirm, skip asking for name and continue with the booking flow. "
+                            f"If they confirm, skip asking for name and continue with the flow. "
+                            f"If they want to update their account details (address, email, phone), use update_customer_info — no need to find a booking first. "
+                            f"ALWAYS ask what the NEW value should be before making any changes. "
                             f"Do NOT call lookup_customer — already done."
                         )
                     else:
