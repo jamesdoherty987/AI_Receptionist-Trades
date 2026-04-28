@@ -6998,6 +6998,13 @@ def client_api(client_id):
                         client['email'] = booking['email']
                         break
             
+            # Get address_audio_url from most recent booking that has one
+            if bookings:
+                for booking in sorted(bookings, key=lambda b: b.get('appointment_time', ''), reverse=True):
+                    if booking.get('address_audio_url'):
+                        client['address_audio_url'] = booking['address_audio_url']
+                        break
+            
             return jsonify(client)
         return jsonify({"error": "Client not found"}), 404
     

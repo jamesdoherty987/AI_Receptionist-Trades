@@ -859,14 +859,17 @@ async def _update_client_from_transcript(
             updates['email'] = extracted_email
             print(f"[POST_CALL] Setting client email: '{extracted_email}'")
         
-        # Update address if not already set
-        if extracted_address and not client.get('address'):
-            updates['address'] = extracted_address
-            print(f"[POST_CALL] Setting client address: '{extracted_address}'")
+        # Always update address from the latest call (most recent address wins)
+        if extracted_address:
+            if client.get('address') != extracted_address:
+                updates['address'] = extracted_address
+                print(f"[POST_CALL] Updating client address: '{client.get('address')}' → '{extracted_address}'")
         
-        if extracted_eircode and not client.get('eircode'):
-            updates['eircode'] = extracted_eircode
-            print(f"[POST_CALL] Setting client eircode: '{extracted_eircode}'")
+        # Always update eircode from the latest call (most recent wins)
+        if extracted_eircode:
+            if client.get('eircode') != extracted_eircode:
+                updates['eircode'] = extracted_eircode
+                print(f"[POST_CALL] Updating client eircode: '{client.get('eircode')}' → '{extracted_eircode}'")
         
         if updates:
             try:

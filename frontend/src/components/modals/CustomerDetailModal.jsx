@@ -407,6 +407,11 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
                     <div className="info-cell flex-2">
                       <span className="info-label">Address</span>
                       <span className="info-value">{client.address || <span className="not-provided">Not provided</span>}</span>
+                      {client.address_audio_url && (
+                        <div style={{ marginTop: 4 }}>
+                          <audio controls preload="metadata" src={getProxiedMediaUrl(client.address_audio_url)} style={{ height: 28, width: '100%', maxWidth: 280 }} />
+                        </div>
+                      )}
                     </div>
                     <div className="info-cell">
                       <span className="info-label">Eircode</span>

@@ -689,6 +689,7 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
                 <div className="crm-customer-details">
                   {c.phone && <span><i className="fas fa-phone"></i> {formatPhone(c.phone)}</span>}
                   {c.email && <span><i className="fas fa-envelope"></i> {c.email}</span>}
+                  {c.address && <span><i className="fas fa-map-marker-alt"></i> {c.address}</span>}
                 </div>
               </div>
               <div className="crm-customer-quick-actions">

@@ -301,7 +301,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     if (job) {
       const appointmentDate = job.appointment_time ? new Date(job.appointment_time) : null;
       const formattedDateTime = appointmentDate 
-        ? appointmentDate.toISOString().slice(0, 16) 
+        ? `${appointmentDate.getFullYear()}-${String(appointmentDate.getMonth()+1).padStart(2,'0')}-${String(appointmentDate.getDate()).padStart(2,'0')}T${String(appointmentDate.getHours()).padStart(2,'0')}:${String(appointmentDate.getMinutes()).padStart(2,'0')}`
         : '';
       setEditFormData({
         customer_name: job.customer_name || '',
@@ -722,7 +722,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const handleCancelEdit = () => {
     if (job) {
       const appointmentDate = job.appointment_time ? new Date(job.appointment_time) : null;
-      const formattedDateTime = appointmentDate ? appointmentDate.toISOString().slice(0, 16) : '';
+      const formattedDateTime = appointmentDate ? `${appointmentDate.getFullYear()}-${String(appointmentDate.getMonth()+1).padStart(2,'0')}-${String(appointmentDate.getDate()).padStart(2,'0')}T${String(appointmentDate.getHours()).padStart(2,'0')}:${String(appointmentDate.getMinutes()).padStart(2,'0')}` : '';
       setEditFormData({
         customer_name: job.customer_name || '', phone: job.phone || job.phone_number || '',
         email: job.email || '', appointment_time: formattedDateTime,
