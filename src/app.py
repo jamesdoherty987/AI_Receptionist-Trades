@@ -8773,6 +8773,127 @@ def booking_detail_api(booking_id):
             else:
                 sanitized_data[key] = value
         
+        # --- CONFLICT DETECTION when time or duration changes ---
+        time_changed = False
+        duration_changed = False
+        old_appointment_time = booking.get('appointment_time')
+        old_duration = booking.get('duration_minutes') or 60
+        
+        new_appointment_time_str = sanitized_data.get('appointment_time')
+        new_duration = sanitized_data.get('duration_minutes')
+        if new_duration is not None:
+            try:
+                new_duration = int(new_duration)
+            except (ValueError, TypeError):
+                new_duration = None
+        
+        # Determine if time or duration actually changed
+        if new_appointment_time_str:
+            from datetime import datetime, timedelta
+            try:
+                new_appt_dt = datetime.fromisoformat(new_appointment_time_str.replace('Z', '+00:00')).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                new_appt_dt = None
+            if new_appt_dt:
+                old_appt_dt = old_appointment_time
+                if isinstance(old_appt_dt, str):
+                    old_appt_dt = datetime.fromisoformat(old_appt_dt.replace('Z', '+00:00')).replace(tzinfo=None)
+                elif hasattr(old_appt_dt, 'replace'):
+                    old_appt_dt = old_appt_dt.replace(tzinfo=None)
+                if old_appt_dt and abs((new_appt_dt - old_appt_dt).total_seconds()) > 60:
+                    time_changed = True
+        else:
+            from datetime import datetime, timedelta
+            new_appt_dt = old_appointment_time
+            if isinstance(new_appt_dt, str):
+                new_appt_dt = datetime.fromisoformat(new_appt_dt.replace('Z', '+00:00')).replace(tzinfo=None)
+            elif hasattr(new_appt_dt, 'replace'):
+                new_appt_dt = new_appt_dt.replace(tzinfo=None)
+        
+        if new_duration is not None and new_duration != old_duration:
+            duration_changed = True
+        
+        effective_duration = new_duration if new_duration else old_duration
+        conflicts = []
+        
+        if (time_changed or duration_changed) and new_appt_dt:
+            # Calculate the new job's end time
+            if effective_duration > 1440:
+                from src.utils.duration_utils import duration_to_business_days
+                _biz_days = duration_to_business_days(effective_duration, company_id=company_id)
+                try:
+                    from src.utils.config import config as _cfg
+                    _biz_indices = _cfg.get_business_days_indices(company_id=company_id)
+                    _bh = _cfg.get_business_hours(company_id=company_id)
+                    _bh_end = _bh.get('end', 17)
+                except Exception:
+                    _biz_indices = [0, 1, 2, 3, 4]
+                    _bh_end = 17
+                _cur = new_appt_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                _counted = 0
+                while _counted < _biz_days:
+                    if _cur.weekday() in _biz_indices:
+                        _counted += 1
+                        if _counted >= _biz_days:
+                            break
+                    _cur += timedelta(days=1)
+                new_job_end = _cur.replace(hour=_bh_end, minute=0, second=0, microsecond=0)
+            elif effective_duration >= 480:
+                try:
+                    from src.utils.config import config as _cfg
+                    _bh = _cfg.get_business_hours(company_id=company_id)
+                    _bh_end = _bh.get('end', 17)
+                except Exception:
+                    _bh_end = 17
+                new_job_end = new_appt_dt.replace(hour=_bh_end, minute=0, second=0, microsecond=0)
+            else:
+                new_job_end = new_appt_dt + timedelta(minutes=effective_duration)
+            
+            # Check employee conflicts
+            assigned_employees = db.get_job_employees(booking_id, company_id=company_id)
+            for emp in assigned_employees:
+                emp_bookings = db.get_employee_bookings_in_range(
+                    emp['id'], new_appt_dt, new_job_end,
+                    exclude_booking_id=booking_id, company_id=company_id
+                )
+                for eb in emp_bookings:
+                    eb_start = eb['appointment_time']
+                    eb_dur = eb.get('duration_minutes') or 60
+                    eb_end = db._calculate_job_end_time(eb_start, eb_dur, company_id=company_id)
+                    # Check overlap
+                    if eb_start < new_job_end and eb_end > new_appt_dt:
+                        conflicts.append({
+                            'employee_name': emp.get('name', 'Employee'),
+                            'conflicting_booking_id': eb['id'],
+                            'conflict_start': eb_start.isoformat() if hasattr(eb_start, 'isoformat') else str(eb_start),
+                        })
+            
+            # Also check general company conflicts (for unassigned jobs)
+            if not assigned_employees:
+                general_conflicts = db.get_conflicting_bookings(
+                    new_appt_dt.isoformat(), new_job_end.isoformat(),
+                    company_id=company_id
+                )
+                # Exclude the current booking from conflicts
+                general_conflicts = [c for c in general_conflicts if c['id'] != booking_id]
+                for gc in general_conflicts:
+                    conflicts.append({
+                        'employee_name': None,
+                        'conflicting_booking_id': gc['id'],
+                        'service_type': gc.get('service_type', ''),
+                    })
+        
+        # If force_save is not set and there are conflicts, return warning (don't save yet)
+        force_save = data.get('force_save', False) or request.args.get('force', 'false') == 'true'
+        # Remove force_save from sanitized_data so it doesn't get passed to DB
+        sanitized_data.pop('force_save', None)
+        if conflicts and not force_save:
+            return jsonify({
+                "warning": "Schedule conflict detected",
+                "conflicts": conflicts,
+                "message": f"{len(conflicts)} conflict(s) found. Save anyway?"
+            }), 409
+        
         success = db.update_booking(booking_id, company_id=company_id, **sanitized_data)
         
         # Auto-move linked quotes to 'won' when payment is marked as paid
@@ -8954,7 +9075,37 @@ def booking_detail_api(booking_id):
                         )
             except Exception as e:
                 safe_print(f"[GCAL] Auto-sync on edit failed (non-critical): {e}")
-            return jsonify({"success": True})
+            
+            # Send reschedule email to customer if time/date changed
+            if time_changed or duration_changed:
+                try:
+                    updated_b2 = db.get_booking(booking_id, company_id=company_id)
+                    client_id_rs = updated_b2.get('client_id') if updated_b2 else None
+                    client_rs = db.get_client(client_id_rs, company_id=company_id) if client_id_rs else None
+                    customer_email_rs = (updated_b2 or {}).get('email') or (client_rs.get('email') if client_rs else None)
+                    customer_name_rs = (client_rs.get('name') if client_rs else None) or 'Customer'
+                    service_type_rs = (updated_b2 or {}).get('service_type', 'appointment')
+                    company_obj = db.get_company(company_id)
+                    company_name_rs = company_obj.get('company_name', '') if company_obj else ''
+                    
+                    if customer_email_rs and new_appt_dt:
+                        from src.services.email_reminder import get_email_service
+                        email_svc = get_email_service()
+                        email_svc.company_reply_to = (company_obj.get('email') or '').strip() if company_obj else None
+                        is_full_day_rs = effective_duration >= 480
+                        email_svc.send_reschedule_email(
+                            to_email=customer_email_rs,
+                            customer_name=customer_name_rs,
+                            new_time=new_appt_dt,
+                            service_type=service_type_rs,
+                            company_name=company_name_rs,
+                            is_full_day=is_full_day_rs
+                        )
+                        safe_print(f"[RESCHEDULE] Sent reschedule email to {customer_email_rs} for booking {booking_id}")
+                except Exception as e:
+                    safe_print(f"[RESCHEDULE] Email failed (non-critical): {e}")
+            
+            return jsonify({"success": True, "time_changed": time_changed, "duration_changed": duration_changed})
         return jsonify({"error": "Failed to update booking"}), 400
     
     elif request.method == "DELETE":

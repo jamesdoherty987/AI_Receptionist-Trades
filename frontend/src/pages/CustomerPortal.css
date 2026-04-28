@@ -123,3 +123,10 @@
 .qa-accept-btn:hover { background: #059669; }
 .qa-accept-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .qa-disclaimer { font-size: 0.72rem; color: #94a3b8; text-align: center; margin: 10px 0 0; }
+
+/* Duration badge in portal */
+.portal-duration {
+  color: #6366f1;
+  font-weight: 500;
+  margin-left: 2px;
+}

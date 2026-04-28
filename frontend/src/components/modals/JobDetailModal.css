@@ -1318,3 +1318,38 @@
 .job-photo-caption::placeholder {
   color: #cbd5e1;
 }
+
+/* Conflict Warning Banner */
+.jdm-conflict-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: #92400e;
+  flex-wrap: wrap;
+}
+.jdm-conflict-warning i {
+  color: #f59e0b;
+  font-size: 1rem;
+}
+.jdm-conflict-warning span {
+  flex: 1;
+  font-weight: 500;
+}
+.jdm-conflict-warning .btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.72rem;
+  border-radius: 6px;
+}
+.jdm-conflict-warning .btn-warning {
+  background: #f59e0b;
+  color: white;
+  border: none;
+}
+.jdm-conflict-warning .btn-warning:hover {
+  background: #d97706;
+}

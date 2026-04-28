@@ -335,8 +335,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       setMaterialSearch('');
       setCustomMaterial({ name: '', unit_price: '', quantity: '1', unit: 'each' });
       setNewTask({ title: '', description: '', estimated_cost: '' });
+      setConflictWarning(null);
     }
   }, [isOpen]);
+
+  const [conflictWarning, setConflictWarning] = useState(null);
 
   const editMutation = useMutation({
     mutationFn: async (data) => {
@@ -360,17 +363,25 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       }
       return res;
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      setConflictWarning(null);
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       setIsEditing(false);
-      addToast(`${terminology.job || 'Job'} updated successfully!`, 'success');
+      const timeChanged = res?.data?.time_changed || res?.data?.duration_changed;
+      addToast(`${terminology.job || 'Job'} updated successfully!${timeChanged ? ' Customer notified.' : ''}`, 'success');
     },
     onError: (error) => {
+      // Handle 409 conflict response — show warning instead of error
+      if (error.response?.status === 409 && error.response?.data?.conflicts) {
+        setConflictWarning(error.response.data);
+        return;
+      }
       addToast(`Failed to update ${(terminology.job || 'job').toLowerCase()}: ` + (error.response?.data?.error || error.message), 'error');
     }
   });
@@ -700,9 +711,12 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     setEditFormData(prev => ({ ...prev, ...updates }));
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = (forceSave = false) => {
     if (!editFormData.appointment_time || !editFormData.service_type) { addToast('Please fill in required fields', 'warning'); return; }
-    editMutation.mutate(editFormData);
+    const payload = { ...editFormData };
+    if (forceSave) payload.force_save = true;
+    setConflictWarning(null);
+    editMutation.mutate(payload);
   };
 
   const handleCancelEdit = () => {
@@ -721,6 +735,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         dining_area: job.dining_area || '', special_requests: job.special_requests || '',
       });
     }
+    setConflictWarning(null);
     setIsEditing(false);
   };
 
@@ -916,11 +931,27 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               </>
             ) : (
               <>
-                <button className="btn btn-secondary" onClick={handleCancelEdit} disabled={editMutation.isPending}>Cancel</button>
-                <button className="btn btn-primary" onClick={handleSaveEdit} disabled={editMutation.isPending}>
-                  <i className={`fas ${editMutation.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
-                  {editMutation.isPending ? 'Saving...' : 'Save'}
-                </button>
+                {conflictWarning && (
+                  <div className="jdm-conflict-warning">
+                    <i className="fas fa-exclamation-triangle"></i>
+                    <span>{conflictWarning.message || 'Schedule conflict detected'}</span>
+                    <button className="btn btn-warning btn-sm" onClick={() => handleSaveEdit(true)} disabled={editMutation.isPending}>
+                      <i className="fas fa-save"></i> Save Anyway
+                    </button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setConflictWarning(null)}>
+                      <i className="fas fa-times"></i> Cancel
+                    </button>
+                  </div>
+                )}
+                {!conflictWarning && (
+                  <>
+                    <button className="btn btn-secondary" onClick={handleCancelEdit} disabled={editMutation.isPending}>Cancel</button>
+                    <button className="btn btn-primary" onClick={() => handleSaveEdit(false)} disabled={editMutation.isPending}>
+                      <i className={`fas ${editMutation.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
+                      {editMutation.isPending ? 'Saving...' : 'Save'}
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>

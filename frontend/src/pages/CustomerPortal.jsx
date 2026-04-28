@@ -145,6 +145,8 @@ function CustomerPortal() {
             <span className="portal-job-date">
               <i className="fas fa-calendar"></i>
               {new Date(j.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              {j.duration_minutes && j.duration_minutes >= 480 && j.duration_minutes <= 1440 && <span className="portal-duration"> (Full Day)</span>}
+              {j.duration_minutes && j.duration_minutes > 1440 && <span className="portal-duration"> ({Math.round(j.duration_minutes / 1440)} Day{Math.round(j.duration_minutes / 1440) > 1 ? 's' : ''})</span>}
             </span>
             {j.address && <span className="portal-job-addr"><i className="fas fa-map-marker-alt"></i> {j.address}</span>}
           </div>
