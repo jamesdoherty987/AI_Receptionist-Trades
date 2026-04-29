@@ -39,25 +39,9 @@
 .ws-stat.busy { color: #d97706; background: #fef3c7; }
 .ws-stat.leave { color: #7c3aed; background: #f5f3ff; }
 
-/* Toolbar - Search & Filter */
-.employees-toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
-.employees-search {
-  display: flex; align-items: center; gap: 0.35rem; flex: 1; min-width: 200px;
-  padding: 0.22rem 0.55rem; background: white; border: 1px solid #e8ecf1;
-  border-radius: 8px; transition: border-color 0.15s;
-}
-.employees-search:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.08); }
-.employees-search i { color: #94a3b8; font-size: 0.72rem; flex-shrink: 0; }
-.employees-search input {
-  border: none; outline: none; background: transparent; font-size: 0.82rem;
-  font-family: inherit; color: #1e293b; width: 100%;
-}
-.employees-search input::placeholder { color: #cbd5e1; }
-.search-clear {
-  background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0.15rem;
-  font-size: 0.7rem; display: flex; align-items: center; border-radius: 50%;
-}
-.search-clear:hover { color: #64748b; background: #f1f5f9; }
+/* Toolbar - Search & Controls */
+.employees-toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.employees-toolbar-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; flex-wrap: wrap; }
 
 .employees-filter-pills { display: flex; gap: 0.3rem; }
 .filter-pill {
@@ -379,7 +363,12 @@
   .employees-header h2 { font-size: 1rem; }
   .employees-stats-bar { display: none; }
   .employees-toolbar { flex-direction: column; gap: 0.5rem; }
-  .employees-search { min-width: unset; }
+  .employees-toolbar .dash-search { min-width: unset; max-width: none; width: 100%; }
+  .employees-toolbar-right { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 0.4rem; }
+  .employees-toolbar-right .view-toggle { flex: 1; }
+  .employees-toolbar-right .view-toggle-btn { flex: 1; justify-content: center; padding: 0.4rem 0.5rem; font-size: 0.78rem; }
+  .employees-toolbar-right .btn-add { flex: 1; justify-content: center; font-size: 0.78rem; padding: 0.4rem 0.6rem; }
+  .employees-toolbar-right .btn-download-timetable { flex: 1; justify-content: center; font-size: 0.78rem; padding: 0.4rem 0.6rem; }
   .employees-filter-pills { width: 100%; overflow-x: auto; flex-wrap: wrap; }
   .employee-card { padding: 0.55rem 0.75rem; gap: 0.5rem; border-radius: 8px; }
   .employee-avatar { width: 34px; height: 34px; font-size: 0.85rem; }

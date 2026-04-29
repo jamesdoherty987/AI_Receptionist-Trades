@@ -239,7 +239,7 @@ function ExpensesPanel() {
           <option value="all">All Categories</option>
           {EXPENSE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
-        <div className="acct-search" style={{ flex: 1 }}>
+        <div className="dash-search" style={{ flex: 1 }}>
           <i className="fas fa-search"></i>
           <input type="text" placeholder="Search expenses..." value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)} />

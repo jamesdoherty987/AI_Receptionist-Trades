@@ -423,8 +423,26 @@ function EmployeesTab({ employees, bookings }) {
             </div>
           )}
         </div>
-        <div className="employees-header-right">
-          {employees.length > 0 && (
+      </div>
+
+      {/* Search & Controls Bar */}
+      {employees.length > 0 && (
+        <div className="employees-toolbar">
+          <div className="dash-search">
+            <i className="fas fa-search"></i>
+            <input
+              type="text"
+              placeholder="Search by name, specialty, or phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="dash-search-clear" onClick={() => setSearchQuery('')}>
+                <i className="fas fa-times"></i>
+              </button>
+            )}
+          </div>
+          <div className="employees-toolbar-right">
             <div className="view-toggle">
               <button
                 className={`view-toggle-btn ${viewMode === 'schedule' ? 'active' : ''}`}
@@ -441,46 +459,28 @@ function EmployeesTab({ employees, bookings }) {
                 <i className="fas fa-users"></i> Team
               </button>
             </div>
-          )}
-          <button className="btn-add" onClick={handleAddClick}>
-            <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add {terminology.employee}
-          </button>
-          {employees.length > 0 && (
+            <button className="btn-add" onClick={handleAddClick}>
+              <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add {terminology.employee}
+            </button>
             <button className="btn-download-timetable" onClick={handleDownloadTimetable} title="Download weekly timetable as CSV">
               <i className="fas fa-download"></i> Timetable
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Search & Filter Bar */}
+      {/* Filter Pills */}
       {employees.length > 0 && (
-        <div className="employees-toolbar">
-          <div className="employees-search">
-            <i className="fas fa-search"></i>
-            <input
-              type="text"
-              placeholder="Search by name, specialty, or phone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button className="search-clear" onClick={() => setSearchQuery('')}>
-                <i className="fas fa-times"></i>
-              </button>
-            )}
-          </div>
-          <div className="employees-filter-pills">
-            {['all', 'available', 'busy', 'leave'].map(f => (
-              <button
-                key={f}
-                className={`filter-pill ${statusFilter === f ? 'active' : ''}`}
-                onClick={() => setStatusFilter(f)}
-              >
-                {f === 'all' ? 'All' : f === 'available' ? 'Available' : f === 'busy' ? 'On Job' : 'On Leave'}
-              </button>
-            ))}
-          </div>
+        <div className="employees-filter-pills">
+          {['all', 'available', 'busy', 'leave'].map(f => (
+            <button
+              key={f}
+              className={`filter-pill ${statusFilter === f ? 'active' : ''}`}
+              onClick={() => setStatusFilter(f)}
+            >
+              {f === 'all' ? 'All' : f === 'available' ? 'Available' : f === 'busy' ? 'On Job' : 'On Leave'}
+            </button>
+          ))}
         </div>
       )}
 

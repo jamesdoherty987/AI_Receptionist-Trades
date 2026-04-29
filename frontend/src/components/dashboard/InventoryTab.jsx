@@ -380,12 +380,12 @@ function InventoryTab() {
       {/* Toolbar */}
       {materials.length > 0 && (
         <div className="inv-toolbar">
-          <div className="inv-search">
+          <div className="dash-search">
             <i className="fas fa-search"></i>
             <input type="text" placeholder={`Search ${(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}...`} value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)} />
             {searchTerm && (
-              <button className="inv-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
+              <button className="dash-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
                 <i className="fas fa-times"></i>
               </button>
             )}

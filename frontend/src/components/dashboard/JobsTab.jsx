@@ -383,10 +383,10 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
       {/* Header with search and add */}
       <div className="jt-header">
-        <div className="jt-search">
+        <div className="dash-search">
           <i className="fas fa-search"></i>
           <input type="text" placeholder={features.tableManagement ? "Search by name, table, area, requests..." : "Search by name, service, address, phone..."} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-          {searchTerm && <button className="jt-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
+          {searchTerm && <button className="dash-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
         </div>
         <div className="jt-header-actions">
           <div className="jt-view-toggle">

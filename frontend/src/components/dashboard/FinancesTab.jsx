@@ -777,7 +777,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
               onClick={() => setFilter(f.key)}>{f.label}</button>
           ))}
         </div>
-        <div className="acct-search" style={{ flex: 1, maxWidth: 260 }}>
+        <div className="dash-search" style={{ flex: 1, maxWidth: 260 }}>
           <i className="fas fa-search"></i>
           <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>

@@ -68,40 +68,6 @@
   gap: 0.5rem;
 }
 
-/* Search */
-.mat-search {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.22rem 0.55rem;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: white;
-  transition: border-color 0.2s;
-}
-
-.mat-search:focus-within {
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
-}
-
-.mat-search i { color: var(--text-secondary); font-size: 0.72rem; flex-shrink: 0; }
-.mat-search input { border: none; outline: none; flex: 1; font-size: 0.82rem; font-family: inherit; background: transparent; }
-
-.mat-search-clear {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 2px;
-  font-size: 0.8rem;
-  line-height: 1;
-  border-radius: 50%;
-  transition: color 0.15s;
-}
-
-.mat-search-clear:hover { color: var(--text-primary); }
 
 /* Filter */
 .mat-filter select {

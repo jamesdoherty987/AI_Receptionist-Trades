@@ -146,7 +146,7 @@ function PipelineTab() {
         </div>
         <div className="pipe-header-right">
           {hasQuotes && (
-            <div className="pipe-search">
+            <div className="dash-search" style={{ maxWidth: 220 }}>
               <i className="fas fa-search"></i>
               <input placeholder="Search quotes..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>

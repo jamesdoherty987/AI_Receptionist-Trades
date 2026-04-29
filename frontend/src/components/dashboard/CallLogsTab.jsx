@@ -116,25 +116,25 @@ function CallLogsTab() {
     <div className="call-logs-tab">
       <div className="call-logs-header">
         <h2>Call Logs {total > 0 && <span style={{ fontWeight: 400, fontSize: '0.85rem', color: '#94a3b8' }}>({total})</span>}</h2>
-        <div className="call-logs-controls">
-          <div className="dash-search">
-            <i className="fas fa-search"></i>
-            <input type="text" placeholder="Search by name, phone, address..." value={searchTerm} onChange={handleSearch} />
-            {searchTerm && <button className="dash-search-clear" onClick={() => { setSearchTerm(''); setPage(1); }}><i className="fas fa-times"></i></button>}
-          </div>
-        </div>
       </div>
 
-      <div className="call-logs-filters">
-        {FILTERS.map(f => (
-          <button
-            key={f.key}
-            className={`filter-btn ${activeFilter === f.key ? 'active' : ''} ${f.key === 'lost' ? 'lost-filter' : ''}`}
-            onClick={() => handleFilterChange(f.key)}
-          >
-            <i className={`fas ${f.icon}`}></i> {f.label}
-          </button>
-        ))}
+      <div className="call-logs-controls">
+        <div className="dash-search">
+          <i className="fas fa-search"></i>
+          <input type="text" placeholder="Search by name, phone, address..." value={searchTerm} onChange={handleSearch} />
+          {searchTerm && <button className="dash-search-clear" onClick={() => { setSearchTerm(''); setPage(1); }}><i className="fas fa-times"></i></button>}
+        </div>
+        <div className="call-logs-filters">
+          {FILTERS.map(f => (
+            <button
+              key={f.key}
+              className={`filter-btn ${activeFilter === f.key ? 'active' : ''} ${f.key === 'lost' ? 'lost-filter' : ''}`}
+              onClick={() => handleFilterChange(f.key)}
+            >
+              <i className={`fas ${f.icon}`}></i> {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="call-logs-list">

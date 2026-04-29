@@ -182,22 +182,14 @@ body {
   }
 
   /* ── Consistent search bars ── */
-  .jt-search,
-  .employees-search,
-  .mat-search,
-  .svc-search,
-  .acct-search,
+  .dash-search,
   .search-box {
-    padding: 0.4rem 0.65rem;
+    padding: 0.5rem 0.65rem;
     border-radius: 8px;
     font-size: 0.85rem;
   }
 
-  .jt-search input,
-  .employees-search input,
-  .mat-search input,
-  .svc-search input,
-  .acct-search input,
+  .dash-search input,
   .search-box input {
     font-size: 0.85rem;
   }

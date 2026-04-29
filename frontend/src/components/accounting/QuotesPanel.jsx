@@ -631,7 +631,7 @@ function QuotesPanel() {
       </div>
 
       <div className="acct-toolbar">
-        <div className="acct-search" style={{ flex: 1 }}>
+        <div className="dash-search" style={{ flex: 1 }}>
           <i className="fas fa-search"></i>
           <input type="text" placeholder="Search quotes..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>

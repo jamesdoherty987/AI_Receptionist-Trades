@@ -442,11 +442,11 @@ function ServicesTab() {
 
       {services.length > 0 && (
         <div className="svc-toolbar">
-          <div className="svc-search">
+          <div className="dash-search">
             <i className="fas fa-search"></i>
             <input type="text" placeholder={`Search ${(terminology.services || 'services').toLowerCase()}...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             {searchTerm && (
-              <button className="svc-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search"><i className="fas fa-times"></i></button>
+              <button className="dash-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search"><i className="fas fa-times"></i></button>
             )}
           </div>
           <div className="svc-toolbar-right">

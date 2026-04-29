@@ -268,12 +268,12 @@ function MaterialsToolbar({ searchTerm, setSearchTerm, filterCategory, setFilter
   return (
     <div className="mat-toolbar">
       <div className="mat-toolbar-top">
-        <div className="mat-search">
+        <div className="dash-search">
           <i className="fas fa-search"></i>
           <input type="text" placeholder="Search materials..." value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)} />
           {searchTerm && (
-            <button className="mat-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
+            <button className="dash-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
               <i className="fas fa-times"></i>
             </button>
           )}

@@ -315,7 +315,7 @@ function CrmTab({ clients, bookings = [] }) {
           ))}
         </div>
         <div className="crm-controls-right">
-          <div className="dash-search crm-search">
+          <div className="dash-search" style={{ maxWidth: 400 }}>
             <i className="fas fa-search"></i>
             <input type="text" placeholder={activeView === 'pipeline' ? 'Search leads...' : activeView === 'customers' ? `Search ${(terminology.clients || 'customers').toLowerCase()}...` : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />

@@ -311,7 +311,7 @@ function RevenueLedgerPanel() {
             {REVENUE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         )}
-        <div className="acct-search" style={{ flex: 1 }}>
+        <div className="dash-search" style={{ flex: 1 }}>
           <i className="fas fa-search"></i>
           <input type="text" placeholder="Search income..." value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)} />
