@@ -248,16 +248,16 @@ class TestBookJobCalloutLogic:
 class TestAvailabilityCalloutDuration:
 
     @patch('src.utils.config.config')
-    @patch('src.services.calendar_tools.match_service')
+    @patch('src.services.calendar_tools.lookup_service_by_name')
     @patch('src.services.calendar_tools._resolve_callout_duration')
-    def test_check_availability_uses_callout_duration(self, mock_resolve, mock_match, mock_config):
+    def test_check_availability_uses_callout_duration(self, mock_resolve, mock_lookup, mock_config):
         from src.services.calendar_tools import execute_tool_call
 
         mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
         mock_config.BUSINESS_DAYS = [0, 1, 2, 3, 4]
         mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
 
-        mock_match.return_value = {
+        mock_lookup.return_value = {
             'service': {'name': 'Kitchen Renovation', 'duration_minutes': 2880,
                         'requires_callout': True, 'employees_required': 1, 'employee_restrictions': None},
             'matched_name': 'Kitchen Renovation', 'score': 95
@@ -283,16 +283,16 @@ class TestAvailabilityCalloutDuration:
         assert passed_duration == 45
 
     @patch('src.utils.config.config')
-    @patch('src.services.calendar_tools.match_service')
+    @patch('src.services.calendar_tools.lookup_service_by_name')
     @patch('src.services.calendar_tools._resolve_callout_duration')
-    def test_get_next_available_uses_callout_duration(self, mock_resolve, mock_match, mock_config):
+    def test_get_next_available_uses_callout_duration(self, mock_resolve, mock_lookup, mock_config):
         from src.services.calendar_tools import execute_tool_call
 
         mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
         mock_config.BUSINESS_DAYS = [0, 1, 2, 3, 4]
         mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
 
-        mock_match.return_value = {
+        mock_lookup.return_value = {
             'service': {'name': 'Roof Repair', 'duration_minutes': 1440,
                         'requires_callout': True, 'employees_required': 1, 'employee_restrictions': None},
             'matched_name': 'Roof Repair', 'score': 90
@@ -313,16 +313,16 @@ class TestAvailabilityCalloutDuration:
         assert result.get('is_callout_service') is True
 
     @patch('src.utils.config.config')
-    @patch('src.services.calendar_tools.match_service')
+    @patch('src.services.calendar_tools.lookup_service_by_name')
     @patch('src.services.calendar_tools._resolve_callout_duration')
-    def test_non_callout_not_flagged(self, mock_resolve, mock_match, mock_config):
+    def test_non_callout_not_flagged(self, mock_resolve, mock_lookup, mock_config):
         from src.services.calendar_tools import execute_tool_call
 
         mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
         mock_config.BUSINESS_DAYS = [0, 1, 2, 3, 4]
         mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
 
-        mock_match.return_value = {
+        mock_lookup.return_value = {
             'service': {'name': 'Plumbing', 'duration_minutes': 120,
                         'requires_callout': False, 'employees_required': 1, 'employee_restrictions': None},
             'matched_name': 'Plumbing', 'score': 95

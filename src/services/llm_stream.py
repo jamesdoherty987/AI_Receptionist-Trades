@@ -18,6 +18,7 @@ from src.utils.date_parser import parse_datetime
 from src.services.calendar_tools import CALENDAR_TOOLS, execute_tool_call
 from src.services.call_state import CallState, create_call_state
 from src.utils.security import normalize_phone_for_comparison
+from src.utils.industry_config import get_filler_keywords
 from datetime import datetime, timedelta
 
 
@@ -840,6 +841,10 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         print(f"🔍 [PRE-CHECK] User message: '{user_message[:80]}...'")
         print(f"{'='*60}")
     
+        # Load industry-specific filler keywords from config
+        _industry_type = call_state.industry_type if call_state else 'trades'
+        _filler_kw = get_filler_keywords(_industry_type)
+
         # Get previous assistant message for context
         prev_assistant_msg = ""
         for msg in reversed(messages[:-1]):
@@ -928,7 +933,11 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         if not likely_needs_tool:
             # Only match phrases that are SPECIFICALLY about address/location
             # Removed "is that correct" and "is that right" - too generic, matches booking confirmations too
-            address_confirmation_phrases = ["same address", "still your address", "your address", "still at", "at the same", "same location", "same place", "address as before", "address on file", "correct address", "the correct address"]
+            address_confirmation_phrases = _filler_kw.get('address_confirmation', [
+                "same address", "still your address", "your address", "still at",
+                "at the same", "same location", "same place", "address as before",
+                "address on file", "correct address", "the correct address",
+            ])
             ai_asked_address = any(phrase in prev_assistant_msg for phrase in address_confirmation_phrases)
             
             # Extra guard: make sure the AI wasn't asking about a BOOKING confirmation
@@ -955,7 +964,11 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         # the caller responds with an actual address. The LLM will acknowledge and call
         # get_next_available, so play a filler to cover the tool call latency.
         if not likely_needs_tool:
-            ai_asked_for_address_phrases = ["full address", "your address", "eircode", "eir code", "where is the property", "where's the property", "where is the job", "where's the job"]
+            ai_asked_for_address_phrases = _filler_kw.get('address_ask', [
+                "full address", "your address", "eircode", "eir code",
+                "where is the property", "where's the property",
+                "where is the job", "where's the job",
+            ])
             ai_asked_for_addr = any(phrase in prev_assistant_msg for phrase in ai_asked_for_address_phrases)
             # Don't false-trigger on "email address" — that's the email ask, not address ask
             if ai_asked_for_addr and "email address" in prev_assistant_msg:
@@ -1100,17 +1113,12 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         
         if not likely_needs_tool:
             # Booking request - LLM will ask for details first, no immediate tool call
-            if any(phrase in user_message for phrase in ["book", "appointment", "schedule"]):
+            if any(phrase in user_message for phrase in _filler_kw.get('booking_intent', ["book", "appointment", "schedule"])):
                 detected_intent = "BOOKING_INTENT"
                 print(f"   ℹ️ [PRE-CHECK] Detected: BOOKING INTENT (no filler - LLM will gather details)")
             
             # Service description - LLM WILL call match_issue tool, so play a filler
-            elif any(phrase in user_message for phrase in ["leak", "broken", "fix", "repair", "build",
-                     "burst", "blocked", "crack", "damage", "flood", "drip", "issue", "problem",
-                     "need help", "need to get", "need someone", "something wrong",
-                     "plumber", "plumbing", "electrician", "carpenter", "painter", "roofer",
-                     "heating", "boiler", "radiator", "toilet", "shower", "tap", "pipe",
-                     "come out", "call out", "callout"]):
+            elif any(phrase in user_message for phrase in _filler_kw.get('service_description', [])):
                 likely_needs_tool = True
                 detected_intent = "SERVICE_DESCRIPTION"
                 # Use short acknowledgments — "Let me check" sounds odd when they just described an issue

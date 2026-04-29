@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useIndustry } from '../context/IndustryContext';
@@ -33,6 +33,7 @@ import {
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
 import EmployeeNotificationBell from '../components/EmployeeNotificationBell';
+import { useToast } from '../components/Toast';
 import { formatPhone, getStatusBadgeClass, formatDateTime, getProxiedMediaUrl, parseServerDate } from '../utils/helpers';
 import { formatDuration } from '../utils/durationOptions';
 import AddJobModal from '../components/modals/AddJobModal';
@@ -73,11 +74,15 @@ function EmployeeDashboard() {
   const { terminology } = useIndustry();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState('jobs');
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [lightboxPhoto, setLightboxPhoto] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef(null);
+
+  // Job search/filter state
+  const [jobSearch, setJobSearch] = useState('');
 
   // Time-off form state
   const [showTimeOffForm, setShowTimeOffForm] = useState(false);
@@ -126,9 +131,27 @@ function EmployeeDashboard() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
+  // Refresh handler for pull-to-refresh
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['employee-dashboard'] }),
+        queryClient.refetchQueries({ queryKey: ['employee-hours-summary'] }),
+        queryClient.refetchQueries({ queryKey: ['employee-notifications'] }),
+        queryClient.refetchQueries({ queryKey: ['employee-unread-messages'] }),
+      ]);
+      addToast('Dashboard refreshed', 'success');
+    } catch {
+      addToast('Failed to refresh. Please try again.', 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [queryClient, addToast]);
+
   // Job timer state
   const [jobTimerStart, setJobTimerStart] = useState(null); // ISO string when timer started
-  const [jobTimerElapsed, setJobTimerElapsed] = useState(0); // seconds
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [empCustomStatusInput, setEmpCustomStatusInput] = useState('');
   const [empEditingCustomStatus, setEmpEditingCustomStatus] = useState(false);
@@ -163,7 +186,10 @@ function EmployeeDashboard() {
       queryClient.invalidateQueries({ queryKey: ['employee-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
     },
-    onError: () => setEmergencyAcceptingId(null),
+    onError: () => {
+      setEmergencyAcceptingId(null);
+      addToast('Failed to accept emergency job. Please try again.', 'error');
+    },
   });
 
   const { data: hoursSummary } = useQuery({
@@ -210,6 +236,10 @@ function EmployeeDashboard() {
       setShowAddMaterial(false);
       setEmployeeMaterialSearch('');
       setEmployeeCustomMat({ name: '', unit_price: '', quantity: '1' });
+      addToast('Material added', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to add material', 'error');
     },
   });
 
@@ -262,7 +292,7 @@ function EmployeeDashboard() {
         queryClient.setQueryData(['employee-messages'], context.previous);
       }
       console.error('Failed to send message:', error);
-      alert(error.response?.data?.error || 'Failed to send message. Please try again.');
+      addToast(error.response?.data?.error || 'Failed to send message. Please try again.', 'error');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-messages'] });
@@ -275,6 +305,10 @@ function EmployeeDashboard() {
     mutationFn: (itemId) => deleteEmployeeJobMaterial(selectedJobId, itemId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-job-materials', selectedJobId] });
+      addToast('Material removed', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to remove material', 'error');
     },
   });
 
@@ -285,6 +319,9 @@ function EmployeeDashboard() {
       queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
     },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to update job status. Please try again.', 'error');
+    },
   });
 
   const detailsMutation = useMutation({
@@ -293,6 +330,10 @@ function EmployeeDashboard() {
       queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
       setIsEditingJobDetails(false);
+      addToast('Job details updated', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to update job details', 'error');
     },
   });
 
@@ -306,27 +347,41 @@ function EmployeeDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
+      addToast('Media uploaded successfully', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to upload media. Please try again.', 'error');
     },
   });
 
   const timeOffMutation = useMutation({
-    mutationFn: (data) => createTimeOffRequest(data),
+    mutationFn: (formData) => createTimeOffRequest(formData),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['employee-time-off'] });
       setShowTimeOffForm(false);
       setTimeOffForm({ start_date: '', end_date: '', reason: '', type: 'vacation' });
+      addToast('Time-off request submitted', 'success');
       // Warn about conflicting bookings
-      const data = response.data;
-      if (data?.has_conflicts && data.conflicting_jobs?.length > 0) {
-        const jobList = data.conflicting_jobs.map(j => `${j.date}: ${j.service}${j.client ? ` (${j.client})` : ''}`).join('\n');
-        alert(`Note: You have ${data.conflicting_jobs.length} existing job(s) during this period:\n\n${jobList}\n\nYour manager will see this when reviewing your request.`);
+      const resData = response.data;
+      if (resData?.has_conflicts && resData.conflicting_jobs?.length > 0) {
+        const jobCount = resData.conflicting_jobs.length;
+        addToast(`Note: You have ${jobCount} existing job(s) during this period. Your manager will see this when reviewing.`, 'warning');
       }
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to submit time-off request', 'error');
     },
   });
 
   const deleteTimeOffMutation = useMutation({
     mutationFn: (id) => deleteTimeOffRequest(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['employee-time-off'] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-time-off'] });
+      addToast('Time-off request cancelled', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to cancel request', 'error');
+    },
   });
 
   const passwordMutation = useMutation({
@@ -348,23 +403,36 @@ function EmployeeDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
       setNoteText('');
+      addToast('Note added', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to add note', 'error');
     },
   });
 
   const bulkCompleteMutation = useMutation({
     mutationFn: (filter) => employeeBulkCompleteJobs(filter),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['employee-hours-summary'] });
       setBulkCompleteFilter(null);
+      const count = response?.data?.completed_count;
+      addToast(count ? `${count} job(s) marked complete` : 'Jobs marked complete', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to complete jobs', 'error');
     },
   });
 
   const profileMutation = useMutation({
     mutationFn: (data) => updateEmployeeProfile(data),
-    onSuccess: (response) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       setIsEditingProfile(false);
+      addToast('Profile updated', 'success');
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.error || 'Failed to update profile', 'error');
     },
   });
 
@@ -379,10 +447,10 @@ function EmployeeDashboard() {
     const processFile = (file) => new Promise((resolve) => {
       const isVideo = file.type.startsWith('video/');
       const isImage = file.type.startsWith('image/');
-      if (!isImage && !isVideo) { resolve(); return; }
+      if (!isImage && !isVideo) { addToast(`Unsupported file type: ${file.name}`, 'error'); resolve(); return; }
 
       const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-      if (file.size > maxSize) { resolve(); return; }
+      if (file.size > maxSize) { addToast(`File too large: ${file.name} (max ${isVideo ? '50MB' : '10MB'})`, 'error'); resolve(); return; }
 
       if (isVideo) {
         photoMutation.mutate(file, { onSettled: resolve });
@@ -466,6 +534,18 @@ function EmployeeDashboard() {
   const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
+  // Job search filter
+  const searchLower = jobSearch.trim().toLowerCase();
+  const filteredJobs = searchLower
+    ? jobs.filter(j =>
+        (j.client_name || '').toLowerCase().includes(searchLower) ||
+        (j.service_type || '').toLowerCase().includes(searchLower) ||
+        (j.address || j.job_address || '').toLowerCase().includes(searchLower) ||
+        (j.status || '').toLowerCase().includes(searchLower) ||
+        (j.status_label || '').toLowerCase().includes(searchLower)
+      )
+    : jobs;
+
   // Helper: is this a completed/paid job whose appointment was today?
   const isCompletedToday = (j) => {
     if (j.status !== 'completed') return false;
@@ -485,8 +565,8 @@ function EmployeeDashboard() {
 
   const isTodayDone = (j) => isCompletedToday(j) || isCompletedTodayOverdue(j);
 
-  const activeJobs = jobs.filter(j => (j.status !== 'completed' && j.status !== 'cancelled') || isTodayDone(j));
-  const completedJobs = jobs.filter(j => j.status === 'completed' && !isTodayDone(j));
+  const activeJobs = filteredJobs.filter(j => (j.status !== 'completed' && j.status !== 'cancelled') || isTodayDone(j));
+  const completedJobs = filteredJobs.filter(j => j.status === 'completed' && !isTodayDone(j));
 
   // In-progress jobs always on top
   const inProgressJobs = activeJobs.filter(j => j.status === 'in-progress');
@@ -611,7 +691,6 @@ function EmployeeDashboard() {
                       <button className="wjd-btn wjd-btn-progress" onClick={() => {
                         const now = new Date().toISOString();
                         setJobTimerStart(now);
-                        setJobTimerElapsed(0);
                         statusMutation.mutate({ jobId: selectedJobId, status: 'in-progress', started_at: now });
                       }} disabled={statusMutation.isPending}>
                         <i className="fas fa-play-circle"></i> Start Job
@@ -912,6 +991,16 @@ function EmployeeDashboard() {
                           </span>
                         </div>
                       </div>
+                      {job.email && (
+                        <div className="wjd-info-row">
+                          <div className="wjd-info-cell">
+                            <span className="wjd-label">Email</span>
+                            <span className="wjd-value">
+                              <a href={`mailto:${job.email}`} className="wjd-link">{job.email}</a>
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1149,6 +1238,9 @@ function EmployeeDashboard() {
             <span>{user?.company_name || 'BookedForYou'}</span>
           </Link>
           <div className="employee-header-right">
+            <button className="employee-refresh-btn" onClick={handleRefresh} disabled={isRefreshing} title="Refresh dashboard">
+              <i className={`fas fa-sync-alt ${isRefreshing ? 'fa-spin' : ''}`}></i>
+            </button>
             <span className="employee-greeting">Hi, {user?.name || 'Employee'}</span>
             <EmployeeNotificationBell onNavigate={handleEmployeeNotifNavigate} userKey={user?.email} />
             <button className="employee-logout-btn" onClick={handleLogout}>
@@ -1241,12 +1333,32 @@ function EmployeeDashboard() {
             {/* ---- JOBS TAB ---- */}
             {activeTab === 'jobs' && (
               <div className="employee-jobs">
-                {/* Add Job button */}
-                <div className="wj-add-job-row">
+                {/* Add Job button & Search */}
+                <div className="wj-toolbar">
+                  <div className="wj-search">
+                    <i className="fas fa-search"></i>
+                    <input
+                      type="text"
+                      placeholder="Search jobs by client, service, address..."
+                      value={jobSearch}
+                      onChange={e => setJobSearch(e.target.value)}
+                    />
+                    {jobSearch && (
+                      <button className="wj-search-clear" onClick={() => setJobSearch('')}>
+                        <i className="fas fa-times"></i>
+                      </button>
+                    )}
+                  </div>
                   <button className="wjd-btn wjd-btn-progress wj-add-job-btn" onClick={() => setIsAddJobOpen(true)}>
                     <i className="fas fa-plus-circle"></i> Add Job
                   </button>
                 </div>
+                {jobSearch && (
+                  <div className="wj-search-results-info">
+                    <span>{filteredJobs.length} result{filteredJobs.length !== 1 ? 's' : ''} for "{jobSearch}"</span>
+                    <button className="wj-search-clear-link" onClick={() => setJobSearch('')}>Clear search</button>
+                  </div>
+                )}
                 {/* In Progress — always visible at top */}
                 {(inProgressJobs.length > 0 || justCompletedFromProgress.length > 0) && (
                   <div className="wj-section wj-in-progress">

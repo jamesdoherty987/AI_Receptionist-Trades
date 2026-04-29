@@ -76,7 +76,6 @@ function EmployeeNotificationBell({ onNavigate, userKey }) {
   const handleOpen = () => {
     setIsOpen(!isOpen);
     if (!isOpen && notifications.length > 0) {
-      const allIds = notifications.map(n => n.id);
       // Don't mark emergency notifications as seen until accepted
       const nonEmergencyIds = notifications.filter(n => n.type !== 'emergency_job').map(n => n.id);
       const newSeenIds = [...new Set([...seenIds, ...nonEmergencyIds])].slice(-100);

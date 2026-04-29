@@ -1478,3 +1478,129 @@
     margin-top: 8px;
   }
 }
+
+/* ── Refresh Button ─────────────────────────────────────── */
+.employee-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.employee-refresh-btn:hover:not(:disabled) {
+  border-color: var(--accent-blue, #0ea5e9);
+  color: var(--accent-blue, #0ea5e9);
+}
+.employee-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Job Search & Toolbar ───────────────────────────────── */
+.wj-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.wj-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 0.2s;
+}
+.wj-search:focus-within {
+  border-color: var(--accent-blue, #0ea5e9);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+.wj-search i {
+  color: var(--text-tertiary, #94a3b8);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.wj-search input {
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 0.9rem;
+  color: var(--text-primary, #1e293b);
+  width: 100%;
+  font-family: inherit;
+}
+.wj-search input::placeholder {
+  color: var(--text-tertiary, #94a3b8);
+}
+.wj-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text-tertiary, #94a3b8);
+  cursor: pointer;
+  font-size: 0.65rem;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.wj-search-clear:hover {
+  background: var(--border-color, #e2e8f0);
+  color: var(--text-primary, #1e293b);
+}
+.wj-search-results-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: rgba(14, 165, 233, 0.06);
+  border: 1px solid rgba(14, 165, 233, 0.15);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #64748b);
+}
+.wj-search-clear-link {
+  background: none;
+  border: none;
+  color: var(--accent-blue, #0ea5e9);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 500;
+  padding: 0;
+}
+.wj-search-clear-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .wj-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wj-search input {
+    font-size: 16px; /* prevents iOS zoom */
+  }
+  .wj-add-job-btn {
+    justify-content: center;
+  }
+  .employee-refresh-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 0.8rem;
+  }
+}

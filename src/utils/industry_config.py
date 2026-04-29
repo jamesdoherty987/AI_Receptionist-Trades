@@ -7,6 +7,15 @@ To add a new industry:
 3. Add a matching entry in frontend/src/config/industryProfiles.js
 
 That's it. Everything else reads from these configs.
+
+The filler_keywords section controls the filler pre-check in llm_stream.py.
+Each key maps to a list of phrases that trigger a specific intent detection.
+The guard logic (negative guards, context checks) is universal and stays in llm_stream.py.
+Only the keyword lists themselves are industry-specific.
+
+The address_capture section controls whether the media_handler captures
+caller audio when the AI asks for an address/eircode. Industries that don't
+collect addresses (salon, restaurant) should set enabled: False.
 """
 
 # ─── Default industry when none is set ───────────────────────────────────────
@@ -25,6 +34,53 @@ INDUSTRY_PROFILES = {
     'trades': {
         'label': 'Trades & Home Services',
         'prompt_file': 'trades_prompt.txt',
+        # ── Filler pre-check keywords (llm_stream.py) ────────────────────
+        # These trigger pre-recorded filler audio while the LLM processes.
+        # Only the keyword lists are industry-specific; guard logic is universal.
+        'filler_keywords': {
+            # SERVICE_DESCRIPTION — caller describes their issue → match_issue tool
+            'service_description': [
+                "leak", "broken", "fix", "repair", "build",
+                "burst", "blocked", "crack", "damage", "flood", "drip",
+                "issue", "problem", "need help", "need to get", "need someone",
+                "something wrong",
+                "plumber", "plumbing", "electrician", "carpenter", "painter", "roofer",
+                "heating", "boiler", "radiator", "toilet", "shower", "tap", "pipe",
+                "come out", "call out", "callout",
+            ],
+            # BOOKING_INTENT — caller wants to book (no filler, LLM gathers details)
+            'booking_intent': ["book", "appointment", "schedule"],
+            # ADDRESS_ASK — phrases the AI uses when asking for an address
+            # (used by filler pre-check for ADDRESS_PROVIDED detection)
+            'address_ask': [
+                "full address", "your address", "eircode", "eir code",
+                "where is the property", "where's the property",
+                "where is the job", "where's the job",
+            ],
+            # ADDRESS_CONFIRMATION — phrases indicating AI is confirming a stored address
+            'address_confirmation': [
+                "same address", "still your address", "your address", "still at",
+                "at the same", "same location", "same place", "address as before",
+                "address on file", "correct address", "the correct address",
+            ],
+        },
+        # ── Address audio capture (media_handler.py) ─────────────────────
+        'address_capture': {
+            'enabled': True,
+            'ask_keywords': [
+                'address', 'eircode', 'eir code', 'location', 'where',
+                'job site', 'job location', 'work location',
+            ],
+            'confirm_patterns': [
+                'confirm', 'correct?', 'right?', 'is it', 'is that',
+                'so the address is', 'booked in for', 'booked for',
+                'job at', 'job for', 'i have your address', 'i have the address',
+                'your address is', 'your address as', 'the address as',
+                'address on file', 'address we have', 'same address',
+                'still the same address', 'same address as before',
+                'address as before', 'address still', 'email address',
+            ],
+        },
         'terminology': {
             'job': 'Job',
             'jobs': 'Jobs',
@@ -94,6 +150,24 @@ INDUSTRY_PROFILES = {
     'salon': {
         'label': 'Salon & Barbershop',
         'prompt_file': 'salon_prompt.txt',
+        'filler_keywords': {
+            'service_description': [
+                "haircut", "cut", "trim", "colour", "color", "dye", "highlights",
+                "balayage", "blowdry", "blow dry", "blowout", "blow out",
+                "shave", "beard", "fade", "perm", "straighten", "keratin",
+                "extensions", "braids", "updo", "style", "restyle",
+                "roots", "toner", "treatment", "deep condition",
+                "appointment", "need help", "something wrong",
+            ],
+            'booking_intent': ["book", "appointment", "schedule"],
+            'address_ask': [],
+            'address_confirmation': [],
+        },
+        'address_capture': {
+            'enabled': False,
+            'ask_keywords': [],
+            'confirm_patterns': [],
+        },
         'terminology': {
             'job': 'Appointment',
             'jobs': 'Appointments',
@@ -163,6 +237,43 @@ INDUSTRY_PROFILES = {
     'cleaning': {
         'label': 'Cleaning Services',
         'prompt_file': 'cleaning_prompt.txt',
+        'filler_keywords': {
+            'service_description': [
+                "clean", "cleaning", "deep clean", "spring clean", "end of tenancy",
+                "move out", "move in", "carpet", "oven", "windows", "window cleaning",
+                "pressure wash", "power wash", "hoover", "vacuum", "mop",
+                "stain", "mould", "mold", "dust", "polish",
+                "office clean", "commercial clean", "domestic clean",
+                "need help", "need someone", "something wrong",
+                "issue", "problem",
+            ],
+            'booking_intent': ["book", "appointment", "schedule"],
+            'address_ask': [
+                "full address", "your address", "eircode", "eir code",
+                "where is the property", "where's the property",
+            ],
+            'address_confirmation': [
+                "same address", "still your address", "your address", "still at",
+                "at the same", "same location", "same place", "address as before",
+                "address on file", "correct address", "the correct address",
+            ],
+        },
+        'address_capture': {
+            'enabled': True,
+            'ask_keywords': [
+                'address', 'eircode', 'eir code', 'location', 'where',
+                'property',
+            ],
+            'confirm_patterns': [
+                'confirm', 'correct?', 'right?', 'is it', 'is that',
+                'so the address is', 'booked in for', 'booked for',
+                'i have your address', 'i have the address',
+                'your address is', 'your address as', 'the address as',
+                'address on file', 'address we have', 'same address',
+                'still the same address', 'same address as before',
+                'address as before', 'address still', 'email address',
+            ],
+        },
         'terminology': {
             'job': 'Job',
             'jobs': 'Jobs',
@@ -232,6 +343,27 @@ INDUSTRY_PROFILES = {
     'restaurant': {
         'label': 'Restaurant & Café',
         'prompt_file': 'restaurant_prompt.txt',
+        'filler_keywords': {
+            'service_description': [
+                "table", "reservation", "party of", "table for",
+                "birthday", "anniversary", "celebration", "event",
+                "private dining", "private room", "function",
+                "large group", "group booking", "set menu",
+                "dietary", "allergy", "allergies", "vegetarian", "vegan",
+                "gluten free", "coeliac", "celiac",
+                "high chair", "wheelchair", "accessible",
+                "takeaway", "take away", "collection", "order",
+                "need help", "something wrong", "issue", "problem",
+            ],
+            'booking_intent': ["book", "reserve", "reservation", "table"],
+            'address_ask': [],
+            'address_confirmation': [],
+        },
+        'address_capture': {
+            'enabled': False,
+            'ask_keywords': [],
+            'confirm_patterns': [],
+        },
         'terminology': {
             'job': 'Reservation',
             'jobs': 'Reservations',
@@ -333,3 +465,24 @@ def get_available_industries() -> list:
         {'value': key, 'label': profile['label']}
         for key, profile in INDUSTRY_PROFILES.items()
     ]
+
+
+def get_filler_keywords(industry_type: str = None) -> dict:
+    """Get the filler keyword lists for an industry.
+    
+    Returns a dict with keys like 'service_description', 'booking_intent', etc.
+    Each value is a list of phrases that trigger that intent.
+    Falls back to DEFAULT_INDUSTRY if industry_type is unknown.
+    """
+    profile = get_industry_profile(industry_type)
+    return profile.get('filler_keywords', INDUSTRY_PROFILES[DEFAULT_INDUSTRY]['filler_keywords'])
+
+
+def get_address_capture_config(industry_type: str = None) -> dict:
+    """Get the address audio capture config for an industry.
+    
+    Returns a dict with 'enabled', 'ask_keywords', and 'confirm_patterns'.
+    Falls back to DEFAULT_INDUSTRY if industry_type is unknown.
+    """
+    profile = get_industry_profile(industry_type)
+    return profile.get('address_capture', INDUSTRY_PROFILES[DEFAULT_INDUSTRY]['address_capture'])

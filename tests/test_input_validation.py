@@ -298,7 +298,7 @@ class TestServiceMatcher:
     
     def test_service_matcher_class_exists(self):
         """ServiceMatcher class should exist"""
-        with open('src/services/calendar_tools.py', 'r') as f:
+        with open('src/services/service_matcher.py', 'r') as f:
             content = f.read()
         
         assert "class ServiceMatcher" in content, \
@@ -306,7 +306,7 @@ class TestServiceMatcher:
     
     def test_service_matcher_has_match_method(self):
         """ServiceMatcher should have match_service method"""
-        with open('src/services/calendar_tools.py', 'r') as f:
+        with open('src/services/service_matcher.py', 'r') as f:
             content = f.read()
         
         assert "def match_service" in content, \
@@ -314,7 +314,7 @@ class TestServiceMatcher:
     
     def test_service_matcher_uses_confidence_threshold(self):
         """ServiceMatcher should use confidence threshold"""
-        with open('src/services/calendar_tools.py', 'r') as f:
+        with open('src/services/service_matcher.py', 'r') as f:
             content = f.read()
         
         assert "confidence" in content.lower() and "threshold" in content.lower(), \

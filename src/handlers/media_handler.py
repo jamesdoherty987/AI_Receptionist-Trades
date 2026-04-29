@@ -66,6 +66,8 @@ MULAW_SAMPLE_RATE = 8000
 MULAW_BYTES_PER_PACKET = 160  # 20ms packets
 MAX_BUFFER_PACKETS = (AUDIO_BUFFER_SECONDS * MULAW_SAMPLE_RATE) // MULAW_BYTES_PER_PACKET  # ~500
 
+# Default address keywords — used as fallback if industry config not yet loaded.
+# At runtime, these are overridden per-call from the industry config.
 ADDRESS_ASK_KEYWORDS = ['address', 'eircode', 'eir code', 'location', 'where', 'job site', 'job location', 'work location']
 
 # Phrases that indicate the AI is confirming/repeating an address, NOT asking for one.
@@ -87,18 +89,25 @@ EMAIL_CONFIRM_PATTERNS = ['your email is', 'your email as', 'email on file',
                           'same email', 'still the same email', 'email we have']
 
 
-def ai_asked_for_address(text: str) -> bool:
+def ai_asked_for_address(text: str, ask_keywords: list = None, confirm_patterns: list = None) -> bool:
     """Check if the AI's response is asking the caller for their address/eircode.
     
     Returns False if the AI is merely confirming/repeating an address it already has,
     to prevent Phase 1 from re-triggering on confirmation questions like
     'Just confirming your address: 32 Silver Grove, correct?'
+    
+    Args:
+        text: The AI's response text
+        ask_keywords: Industry-specific keywords (defaults to ADDRESS_ASK_KEYWORDS)
+        confirm_patterns: Industry-specific confirm patterns (defaults to ADDRESS_CONFIRM_PATTERNS)
     """
     lower = text.lower()
-    if not any(kw in lower for kw in ADDRESS_ASK_KEYWORDS):
+    _ask_kw = ask_keywords or ADDRESS_ASK_KEYWORDS
+    _confirm_pat = confirm_patterns or ADDRESS_CONFIRM_PATTERNS
+    if not any(kw in lower for kw in _ask_kw):
         return False
     # If the AI is confirming/repeating back an address, don't trigger capture
-    if any(cp in lower for cp in ADDRESS_CONFIRM_PATTERNS):
+    if any(cp in lower for cp in _confirm_pat):
         return False
     return True
 
@@ -634,7 +643,11 @@ async def media_handler(ws):
                     # (e.g., "Just confirming your address: 32 Silver Grove, correct?")
                     # we do NOT re-trigger, because the caller's response will be
                     # "Yes correct" — not the actual address.
-                    if ai_asked_for_address(full_text):
+                    if getattr(call_state, '_address_capture_enabled', True) and ai_asked_for_address(
+                        full_text,
+                        ask_keywords=getattr(call_state, '_address_ask_keywords', None),
+                        confirm_patterns=getattr(call_state, '_address_confirm_patterns', None),
+                    ):
                         call_state.awaiting_address_audio = True
                         call_state._addr_audio_collecting = False  # Reset — new ask cycle
                         call_state._addr_audio_ever_asked = True  # Persistent — survives declines
@@ -644,7 +657,8 @@ async def media_handler(ws):
                     else:
                         # Log when address keywords are present but it's a confirmation
                         full_lower = full_text.lower()
-                        if any(kw in full_lower for kw in ADDRESS_ASK_KEYWORDS):
+                        _ask_kw = getattr(call_state, '_address_ask_keywords', ADDRESS_ASK_KEYWORDS)
+                        if any(kw in full_lower for kw in _ask_kw):
                             print(f"🎙️ [ADDR_AUDIO] Phase 1 SKIPPED: AI mentioned address but is confirming, not asking")
                     
                     # Email audio capture: same mechanism as address audio
@@ -877,6 +891,30 @@ async def media_handler(ws):
                             print(f"📱 [PHONE_LOOKUP] New customer (phone not in database)")
                     except Exception as e:
                         print(f"⚠️ [PHONE_LOOKUP] Error: {e}")
+                
+                # Load industry type and address capture config for this company
+                if company_id:
+                    try:
+                        from src.services.database import get_database
+                        from src.utils.industry_config import get_address_capture_config
+                        _ind_db = get_database()
+                        _ind_company = _ind_db.get_company(int(company_id))
+                        if _ind_company:
+                            call_state.industry_type = _ind_company.get('industry_type', 'trades')
+                        _addr_cfg = get_address_capture_config(call_state.industry_type)
+                        call_state._address_capture_enabled = _addr_cfg.get('enabled', True)
+                        call_state._address_ask_keywords = _addr_cfg.get('ask_keywords', ADDRESS_ASK_KEYWORDS)
+                        call_state._address_confirm_patterns = _addr_cfg.get('confirm_patterns', ADDRESS_CONFIRM_PATTERNS)
+                        print(f"🏭 [INDUSTRY] Type: {call_state.industry_type}, address_capture: {call_state._address_capture_enabled}")
+                    except Exception as e:
+                        call_state._address_capture_enabled = True
+                        call_state._address_ask_keywords = ADDRESS_ASK_KEYWORDS
+                        call_state._address_confirm_patterns = ADDRESS_CONFIRM_PATTERNS
+                        print(f"⚠️ [INDUSTRY] Error loading config: {e}, defaulting to trades")
+                else:
+                    call_state._address_capture_enabled = True
+                    call_state._address_ask_keywords = ADDRESS_ASK_KEYWORDS
+                    call_state._address_confirm_patterns = ADDRESS_CONFIRM_PATTERNS
                 
                 # Build system context based on call type
                 if is_outbound and outbound_call_type == "lost_job_callback":
