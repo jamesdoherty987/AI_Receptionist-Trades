@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getBookings, getEmployees, getBusinessHours, getCompanyTimeOffRequests, getBusinessSettings } from '../../services/api';
 import { getStatusBadgeClass, parseServerDate } from '../../utils/helpers';
@@ -115,6 +115,28 @@ function CalendarTab() {
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'week'
+  const [mobilePopupDate, setMobilePopupDate] = useState(null); // mobile day-detail popup
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  // Lock body scroll when mobile popup is open
+  useEffect(() => {
+    if (mobilePopupDate) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [mobilePopupDate]);
+
+  // Track viewport width for mobile-specific behavior
+  useEffect(() => {
+    const onResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      // Close mobile popup when switching to desktop
+      if (!mobile) setMobilePopupDate(null);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   
   const { data: settings } = useQuery({
     queryKey: ['business-settings'],
@@ -329,11 +351,51 @@ function CalendarTab() {
     });
   }, [selectedDate, approvedTimeOff, selectedEmployeeId]);
 
+  // Events for mobile popup date
+  const mobilePopupEvents = useMemo(() => {
+    if (!mobilePopupDate || !filteredBookings) return [];
+    const openSet = new Set(openDayIndices);
+    return filteredBookings
+      .filter(booking => {
+        const bookingDate = parseServerDate(booking.appointment_time);
+        if (bookingDate.toDateString() === mobilePopupDate.toDateString()) return true;
+        const duration = booking.duration_minutes || 60;
+        if (duration > 1440) {
+          if (!openSet.has(mobilePopupDate.getDay())) return false;
+          const bookingEnd = getMultiDayJobEnd(bookingDate, duration, openDayIndices, closingHour);
+          const dayStart = new Date(mobilePopupDate.getFullYear(), mobilePopupDate.getMonth(), mobilePopupDate.getDate());
+          if (bookingDate < dayStart && bookingEnd > dayStart) return true;
+        }
+        return false;
+      })
+      .sort((a, b) => parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time));
+  }, [mobilePopupDate, filteredBookings, openDayIndices, closingHour]);
+
+  // Time-off for mobile popup date
+  const mobilePopupTimeOff = useMemo(() => {
+    if (!mobilePopupDate || !approvedTimeOff) return [];
+    const dateStr = `${mobilePopupDate.getFullYear()}-${String(mobilePopupDate.getMonth() + 1).padStart(2, '0')}-${String(mobilePopupDate.getDate()).padStart(2, '0')}`;
+    return approvedTimeOff.filter(to => {
+      if (selectedEmployeeId && to.employee_id !== selectedEmployeeId) return false;
+      return dateStr >= to.start_date && dateStr <= to.end_date;
+    });
+  }, [mobilePopupDate, approvedTimeOff, selectedEmployeeId]);
+
   // Get employee name by ID (just name, no specialty)
   const getEmployeeName = (employeeId) => {
     const employee = (employees || []).find(w => w.id === employeeId || w.id === Number(employeeId));
     return employee?.name || 'Unknown';
   };
+
+  // Handle day click — on mobile open popup, on desktop select date in side panel
+  const handleDayClick = useCallback((date) => {
+    if (isMobile) {
+      setSelectedDate(date);
+      setMobilePopupDate(date);
+    } else {
+      setSelectedDate(date);
+    }
+  }, [isMobile]);
 
   // Navigation
   const goToPrev = () => {
@@ -501,7 +563,7 @@ function CalendarTab() {
                   <div
                     key={index}
                     className={`calendar-day ${!dayData.isCurrentMonth ? 'other-month' : ''} ${isToday(dayData.date) ? 'today' : ''} ${isSelected(dayData.date) ? 'selected' : ''} ${hasEvents ? 'has-events' : ''} ${hasTimeOff ? 'has-time-off' : ''}`}
-                    onClick={() => setSelectedDate(dayData.date)}
+                    onClick={() => handleDayClick(dayData.date)}
                   >
                     <span className="day-number">{dayData.day}</span>
                     {hasTimeOff && (
@@ -510,28 +572,35 @@ function CalendarTab() {
                       </div>
                     )}
                     {hasEvents && (
-                      <div className="event-dots">
-                        {(() => {
-                          const allDots = [];
-                          for (const event of events.slice(0, 3)) {
-                            const colors = getEmployeeColors(event);
-                            for (const [ci, color] of colors.entries()) {
-                              allDots.push(
-                                <span 
-                                  key={`${event.id}-${ci}`} 
-                                  className={`event-dot employee-colored${event.status === 'completed' ? ' completed' : ''}`}
-                                  style={{ backgroundColor: event.status === 'completed' ? 'var(--success)' : color }}
-                                  title={`${event.customer_name || 'Customer'} - ${event.service_type || 'Service'}`}
-                                ></span>
-                              );
+                      <>
+                        {/* Desktop: show colored dots per event */}
+                        <div className="event-dots desktop-only-dots">
+                          {(() => {
+                            const allDots = [];
+                            for (const event of events.slice(0, 3)) {
+                              const colors = getEmployeeColors(event);
+                              for (const [ci, color] of colors.entries()) {
+                                allDots.push(
+                                  <span 
+                                    key={`${event.id}-${ci}`} 
+                                    className={`event-dot employee-colored${event.status === 'completed' ? ' completed' : ''}`}
+                                    style={{ backgroundColor: event.status === 'completed' ? 'var(--success)' : color }}
+                                    title={`${event.customer_name || 'Customer'} - ${event.service_type || 'Service'}`}
+                                  ></span>
+                                );
+                                if (allDots.length >= 6) break;
+                              }
                               if (allDots.length >= 6) break;
                             }
-                            if (allDots.length >= 6) break;
-                          }
-                          return allDots;
-                        })()}
-                        {events.length > 3 && <span className="more-events">+{events.length - 3}</span>}
-                      </div>
+                            return allDots;
+                          })()}
+                          {events.length > 3 && <span className="more-events">+{events.length - 3}</span>}
+                        </div>
+                        {/* Mobile: single dot indicator */}
+                        <div className="mobile-event-dot-wrap">
+                          <span className="mobile-event-dot"></span>
+                        </div>
+                      </>
                     )}
                   </div>
                 );
@@ -728,7 +797,7 @@ function CalendarTab() {
                   key={dayIndex} 
                   className={`day-column ${isToday(date) ? 'today' : ''}`}
                 >
-                  <div className="week-day-header" onClick={() => setSelectedDate(date)}>
+                  <div className="week-day-header" onClick={() => handleDayClick(date)}>
                     <span className="week-day-name">{dayNames[date.getDay()]}</span>
                     <span className={`week-day-number ${isToday(date) ? 'today-number' : ''}`}>
                       {date.getDate()}
@@ -825,6 +894,122 @@ function CalendarTab() {
         </div>
       )}
       
+      {/* Mobile Day-Detail Popup */}
+      {mobilePopupDate && (
+        <div className="mobile-day-popup-overlay" onClick={() => setMobilePopupDate(null)}>
+          <div className="mobile-day-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-day-popup-header">
+              <h3>
+                {mobilePopupDate.toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </h3>
+              <div className="mobile-day-popup-meta">
+                <span className="event-count">
+                  {mobilePopupEvents.length} {terminology.job || 'job'}{mobilePopupEvents.length !== 1 ? 's' : ''}
+                  {mobilePopupTimeOff.length > 0 && ` · ${mobilePopupTimeOff.length} leave`}
+                </span>
+                <button className="mobile-day-popup-close" onClick={() => setMobilePopupDate(null)}>
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+            <div className="mobile-day-popup-body">
+              {mobilePopupEvents.length === 0 && mobilePopupTimeOff.length === 0 ? (
+                <div className="empty-events">
+                  <i className="fas fa-calendar-check"></i>
+                  <p>No events on this day</p>
+                </div>
+              ) : (
+                <>
+                  {/* Time-off entries */}
+                  {mobilePopupTimeOff.map(to => (
+                    <div key={`to-${to.id}`} className="event-card time-off-card">
+                      <div className="time-off-icon">
+                        <i className={`fas ${to.type === 'sick' ? 'fa-thermometer-half' : to.type === 'personal' ? 'fa-user' : 'fa-umbrella-beach'}`}></i>
+                      </div>
+                      <div className="event-info">
+                        <div className="event-header">
+                          <span className="event-customer">{to.employee_name}</span>
+                          <span className="badge badge-sm time-off-badge">{to.type}</span>
+                        </div>
+                        <div className="event-service time-off-dates">
+                          <i className="fas fa-calendar"></i>
+                          {new Date(to.start_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {' — '}
+                          {new Date(to.end_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                        {to.reason && <div className="event-location">{to.reason}</div>}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Job events */}
+                  {mobilePopupEvents.map(event => {
+                    const colors = event.status === 'completed' ? ['#22c55e'] : getEmployeeColors(event);
+                    return (
+                      <div 
+                        key={event.id} 
+                        className={`event-card clickable${event.status === 'completed' ? ' completed' : ''}`}
+                        onClick={() => { setMobilePopupDate(null); setSelectedJobId(event.id); }}
+                        style={colors.length === 1 ? { borderLeftColor: colors[0] } : { borderLeftColor: 'transparent' }}
+                      >
+                        {colors.length > 1 && (
+                          <div className="multi-employee-border" aria-hidden="true">
+                            {colors.map((c, i) => (
+                              <span key={i} style={{ background: c, flex: 1 }} />
+                            ))}
+                          </div>
+                        )}
+                        <div className="event-time">
+                          <span className="time-range">{formatTimeRange(event.appointment_time, event.duration_minutes)}</span>
+                        </div>
+                        <div className="event-info">
+                          <div className="event-header">
+                            <span className="event-customer">{event.customer_name || 'Customer'}</span>
+                            <span className={`badge badge-sm ${getStatusBadgeClass(event.status)}`}>
+                              {event.status}
+                            </span>
+                          </div>
+                          <div className="event-service">
+                            <i className="fas fa-wrench"></i>
+                            {event.service_type || event.service || 'Service'}
+                          </div>
+                          {(event.assigned_employee_ids?.length > 0) ? (
+                            <div className="event-employee">
+                              <span className="employee-indicators">
+                                {getEmployeeColors(event).map((c, ci) => (
+                                  <span key={ci} className="employee-indicator" style={{ backgroundColor: c }}></span>
+                                ))}
+                              </span>
+                              {event.assigned_employee_ids.map(id => getEmployeeName(id)).join(', ')}
+                            </div>
+                          ) : !['completed', 'cancelled', 'rejected'].includes(event.status) && (
+                            <div className="event-no-employee-warning">
+                              <i className="fas fa-exclamation-triangle"></i> No {(terminology.employee || 'employee').toLowerCase()} assigned
+                            </div>
+                          )}
+                          {(event.job_address || event.address) && (
+                            <div className="event-location">
+                              <i className="fas fa-map-marker-alt"></i>
+                              {event.job_address || event.address}
+                            </div>
+                          )}
+                        </div>
+                        <div className="event-arrow">
+                          <i className="fas fa-chevron-right"></i>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Job Detail Modal */}
       {!!selectedJobId && <JobDetailModal
         isOpen={!!selectedJobId}
