@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { useIndustry } from '../../context/IndustryContext';
 import { getMaterials, createMaterial, updateMaterial, deleteMaterial } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
@@ -34,6 +35,7 @@ const UNIT_OPTIONS = [
 
 function MaterialsTab() {
   const { hasActiveSubscription } = useAuth();
+  const { terminology } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
   const queryClient = useQueryClient();
   const { addToast } = useToast();
@@ -115,7 +117,7 @@ function MaterialsTab() {
         <div>
           <h2 className="tab-page-title">Materials Catalog</h2>
           <p className="tab-page-subtitle">
-            Your price list for parts and materials used on jobs
+            Your price list for parts and materials used on {terminology.jobs?.toLowerCase() || 'jobs'}
           </p>
         </div>
         <button className="btn-add" onClick={() => {
@@ -239,7 +241,7 @@ function MaterialsTab() {
             <p className="delete-warning">Remove <strong>{deleteConfirm.name}</strong> from your price list?</p>
             <p className="delete-cascade-warning">
               <i className="fas fa-info-circle"></i>
-              Materials already logged on jobs won't be affected.
+              Materials already logged on {terminology.jobs?.toLowerCase() || 'jobs'} won't be affected.
             </p>
             <div className="delete-confirm-actions">
               <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>
@@ -389,7 +391,7 @@ function MaterialsList({ materials, searchTerm, filterCategory, sortBy, sortDir,
       <div className="mat-empty">
         <div className="mat-empty-icon">🔩</div>
         <h3>No materials yet</h3>
-        <p>Add the parts and materials you commonly use. They'll be available to pick from when logging materials on jobs.</p>
+        <p>Add the parts and materials you commonly use. They'll be available to pick from when logging materials on {terminology.jobs?.toLowerCase() || 'jobs'}.</p>
         <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>
           Add Your First Material
         </button>

@@ -10,6 +10,17 @@ Edit `src/utils/industry_config.py`. Add an entry to `INDUSTRY_PROFILES`:
 'dental': {
     'label': 'Dental Clinic',
     'prompt_file': 'dental_prompt.txt',
+    'filler_keywords': {
+        'service_description': ["toothache", "filling", "crown", "extraction", ...],
+        'booking_intent': ["book", "appointment", "schedule"],
+        'address_ask': [],
+        'address_confirmation': [],
+    },
+    'address_capture': {
+        'enabled': False,
+        'ask_keywords': [],
+        'confirm_patterns': [],
+    },
     'terminology': {
         'job': 'Appointment',
         'jobs': 'Appointments',
@@ -19,6 +30,19 @@ Edit `src/utils/industry_config.py`. Add an entry to `INDUSTRY_PROFILES`:
         'clients': 'Patients',
         'service': 'Treatment',
         'booking': 'Appointment',
+        'servicesTab': 'Treatments',
+        'inventoryTab': 'Supplies',
+        'financesTab': 'Finances',
+        'insightsTab': 'Insights',
+        'calendarTab': 'Calendar',
+        'callsTab': 'Calls',
+        'crmTab': 'Patients',
+        # Status / action labels used in UI
+        'statusBusy': 'With Patient',
+        'statusAvailable': 'Available',
+        'startAction': 'Start Appointment',
+        'completeAction': 'Mark Complete',
+        'inProgressLabel': 'In Progress',
     },
     'features': {
         'materials': False,
@@ -35,6 +59,31 @@ Edit `src/utils/industry_config.py`. Add an entry to `INDUSTRY_PROFILES`:
         'collect_property_type': False,
         'default_urgency': 'scheduled',
         'urgency_options': ['scheduled', 'emergency'],
+    },
+    # Status workflow — controls board columns and status picker
+    'status_workflow': [
+        {'key': 'pending', 'label': 'New'},
+        {'key': 'scheduled', 'label': 'Scheduled'},
+        {'key': 'in-progress', 'label': 'In Progress'},
+        {'key': 'completed', 'label': 'Completed'},
+    ],
+    'service_config': {
+        'show_category': True,
+        'show_tags': True,
+        'show_capacity': False,
+        'show_area': False,
+        'show_deposit': True,
+        'show_warranty': False,
+        'show_seasonal': False,
+        'show_ai_notes': True,
+        'show_follow_up': True,
+    },
+    'inventory': {
+        'show_cost_price': True,
+        'show_expiry': True,
+        'show_batch_number': False,
+        'show_location': True,
+        'location_label': 'Storage',
     },
     'onboarding': {
         'employee_icon': 'fa-tooth',
@@ -58,29 +107,33 @@ Edit `frontend/src/config/industryProfiles.js`. Add a matching entry with the sa
 ```javascript
 dental: {
   label: 'Dental Clinic',
-  terminology: { job: 'Appointment', jobs: 'Appointments', employee: 'Dentist', employees: 'Dentists', client: 'Patient', clients: 'Patients', service: 'Treatment', booking: 'Appointment' },
+  terminology: {
+    job: 'Appointment', jobs: 'Appointments', employee: 'Dentist', employees: 'Dentists',
+    client: 'Patient', clients: 'Patients', service: 'Treatment', booking: 'Appointment',
+    servicesTab: 'Treatments', inventoryTab: 'Supplies', financesTab: 'Finances',
+    insightsTab: 'Insights', calendarTab: 'Calendar', callsTab: 'Calls', crmTab: 'Patients',
+    statusBusy: 'With Patient', statusAvailable: 'Available',
+    startAction: 'Start Appointment', completeAction: 'Mark Complete', inProgressLabel: 'In Progress',
+  },
   features: {
-    materials: false,
-    callouts: false,
-    quotes: false,
-    emergencyJobs: true,
-    propertyType: false,
-    jobAddress: false,
-    jobPhotos: true,
-    multiDayJobs: false,
+    materials: false, callouts: false, quotes: false, emergencyJobs: true,
+    propertyType: false, jobAddress: false, jobPhotos: true, multiDayJobs: false,
   },
   tabs: {
     jobs: true, calls: true, calendar: true, employees: true, crm: true,
-    services: true, materials: false, finances: true, insights: true,
+    services: true, inventory: false, finances: true, insights: true,
   },
-  icons: {
-    employee: 'fas fa-tooth',
-    job: 'fas fa-calendar-check',
-  },
+  icons: { employee: 'fas fa-tooth', job: 'fas fa-calendar-check' },
+  statusWorkflow: [
+    { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
+    { key: 'scheduled', label: 'Scheduled', color: '#6366f1', icon: 'fa-calendar-check' },
+    { key: 'in-progress', label: 'In Progress', color: '#8b5cf6', icon: 'fa-tooth' },
+    { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },
+  ],
+  serviceConfig: { /* ... industry-specific service form config ... */ },
+  inventory: { /* ... industry-specific inventory config ... */ },
   onboarding: {
-    employeeIcon: 'fa-tooth',
-    employeeLabel: 'Add Dentists',
-    showMaterialsStep: false,
+    employeeIcon: 'fa-tooth', employeeLabel: 'Add Dentists', showMaterialsStep: false,
     companyContextPlaceholder: "Examples:\n- Accepting new patients\n- Emergency appointments available\n...",
   },
 },
@@ -99,6 +152,25 @@ Create `prompts/dental_prompt.txt`. Copy `trades_prompt.txt` as a starting point
 That's literally it. A business owner can now pick "Dental Clinic" from the Industry dropdown in Settings. The UI tabs, AI prompt, terminology, and onboarding all adapt automatically.
 
 ## Architecture Reference
+
+### What's configurable per industry
+
+| Config Key | Where Used | Example |
+|---|---|---|
+| `terminology.*` | All UI labels (tabs, buttons, headings) | `job: 'Reservation'` |
+| `terminology.statusBusy` | Employee status badge | `'Working'` vs `'On Job'` |
+| `terminology.startAction` | Employee dashboard start button | `'Start Shift'` vs `'Start Job'` |
+| `terminology.completeAction` | Employee dashboard complete button | `'End Shift'` vs `'Mark Complete'` |
+| `terminology.inProgressLabel` | In-progress section header | `'Working'` vs `'In Progress'` |
+| `features.*` | Feature gates (callouts, quotes, etc.) | `callouts: false` |
+| `tabs.*` | Tab visibility in dashboard | `crm: false` |
+| `statusWorkflow` | Board columns & status picker | `[{key:'pending',label:'New'}, ...]` |
+| `filler_keywords.*` | AI phone call intent detection | `['table', 'reservation', ...]` |
+| `address_capture` | Whether to capture caller address audio | `enabled: false` |
+| `serviceConfig.*` | Service form field visibility & labels | `showCapacity: true` |
+| `inventory.*` | Inventory categories, units, fields | `categories: ['Proteins', ...]` |
+| `onboarding.*` | Setup wizard customisation | `employeeLabel: 'Add Staff'` |
+| `booking.*` | Booking flow (address, urgency) | `collect_address: false` |
 
 ### Where industry affects behaviour
 

@@ -7,6 +7,7 @@ import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
 import JobDetailModal from './JobDetailModal';
 import { formatPhone, getStatusBadgeClass } from '../../utils/helpers';
+import { useIndustry } from '../../context/IndustryContext';
 import './EmployeeDetailModal.css';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -15,6 +16,7 @@ const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sat
 function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const { terminology } = useIndustry();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -184,7 +186,7 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
 
   if (loadingEmployee) {
     return (
-      <Modal isOpen={isOpen} onClose={onClose} title="Employee Details" size="xlarge">
+      <Modal isOpen={isOpen} onClose={onClose} title={`${terminology.employee || 'Employee'} Details`} size="xlarge">
         <div className="modal-loading"><div className="loading-spinner"></div><p>Loading...</p></div>
       </Modal>
     );
@@ -194,7 +196,7 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
   const isBusy = jobsByPeriod.todayJobs.some(j => { const now = new Date(); const d = (now - new Date(j.appointment_time)) / 60000; return d >= -30 && d <= 120; });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Employee Details" size="xlarge">
+    <Modal isOpen={isOpen} onClose={onClose} title={`${terminology.employee || 'Employee'} Details`} size="xlarge">
       <div className="employee-detail-modal">
         {/* Header */}
         <div className="employee-modal-header">
@@ -214,7 +216,7 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
               </>
             )}
             <div className="stats-row">
-              <div className={`stat-badge ${isBusy ? 'busy' : 'available'}`}><i className={`fas ${isBusy ? 'fa-tools' : 'fa-check'}`}></i><span>{isBusy ? 'On Job' : 'Available'}</span></div>
+              <div className={`stat-badge ${isBusy ? 'busy' : 'available'}`}><i className={`fas ${isBusy ? 'fa-tools' : 'fa-check'}`}></i><span>{isBusy ? (terminology.statusBusy || 'On Job') : (terminology.statusAvailable || 'Available')}</span></div>
               <div className="stat-badge"><i className="fas fa-briefcase"></i><span>{jobsByPeriod.total} Total</span></div>
               <div className="stat-badge completed"><i className="fas fa-check-circle"></i><span>{jobsByPeriod.completed} Done</span></div>
               <div className="stat-badge hours"><i className="fas fa-clock"></i><span>{hoursData?.hours_worked || 0}h{scheduledWeeklyHours > 0 ? ` / ${scheduledWeeklyHours}h` : ''} this week</span></div>
@@ -308,7 +310,7 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
                 <div className="schedule-header week"><h3>Next 7 Days</h3><span className="job-count">{jobsByPeriod.next7Days.length}</span></div>
                 <div className="schedule-list">
                   {jobsByPeriod.next7Days.length === 0 ? (
-                    <div className="empty-schedule"><i className="fas fa-calendar-check"></i><span>No upcoming jobs this week</span></div>
+                    <div className="empty-schedule"><i className="fas fa-calendar-check"></i><span>No upcoming {(terminology.jobs || 'jobs').toLowerCase()} this week</span></div>
                   ) : jobsByPeriod.next7Days.map(job => {
                     const d = new Date(job.appointment_time);
                     return (

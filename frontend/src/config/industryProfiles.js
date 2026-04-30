@@ -32,6 +32,12 @@ const industryProfiles = {
       calendarTab: 'Calendar',
       callsTab: 'Calls',
       crmTab: 'CRM',
+      // Status / action labels used in UI
+      statusBusy: 'On Job',
+      statusAvailable: 'Available',
+      startAction: 'Start Job',
+      completeAction: 'Mark Complete',
+      inProgressLabel: 'In Progress',
     },
     features: {
       materials: true,
@@ -58,6 +64,15 @@ const industryProfiles = {
       employee: 'fas fa-hard-hat',
       job: 'fas fa-briefcase',
     },
+    // ─── Status workflow (board columns & status picker) ─────────────
+    statusWorkflow: [
+      { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
+      { key: 'quote_sent', label: 'Quote Sent', color: '#3b82f6', icon: 'fa-paper-plane' },
+      { key: 'quote_accepted', label: 'Quote Accepted', color: '#10b981', icon: 'fa-handshake' },
+      { key: 'scheduled', label: 'Scheduled', color: '#6366f1', icon: 'fa-calendar-check' },
+      { key: 'in-progress', label: 'In Progress', color: '#8b5cf6', icon: 'fa-wrench' },
+      { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },
+    ],
     // ─── Service-specific config ─────────────────────────────────────
     serviceConfig: {
       // Categories for grouping services in the list
@@ -172,6 +187,11 @@ const industryProfiles = {
       calendarTab: 'Calendar',
       callsTab: 'Calls',
       crmTab: 'CRM',
+      statusBusy: 'With Client',
+      statusAvailable: 'Available',
+      startAction: 'Start Appointment',
+      completeAction: 'Mark Complete',
+      inProgressLabel: 'In Progress',
     },
     features: {
       materials: true,
@@ -198,6 +218,12 @@ const industryProfiles = {
       employee: 'fas fa-user-tie',
       job: 'fas fa-calendar-check',
     },
+    statusWorkflow: [
+      { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
+      { key: 'scheduled', label: 'Scheduled', color: '#6366f1', icon: 'fa-calendar-check' },
+      { key: 'in-progress', label: 'In Progress', color: '#8b5cf6', icon: 'fa-cut' },
+      { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },
+    ],
     serviceConfig: {
       categories: [
         'Haircuts', 'Colour', 'Styling', 'Treatments', 'Nails',
@@ -300,6 +326,11 @@ const industryProfiles = {
       calendarTab: 'Calendar',
       callsTab: 'Calls',
       crmTab: 'CRM',
+      statusBusy: 'On Job',
+      statusAvailable: 'Available',
+      startAction: 'Start Job',
+      completeAction: 'Mark Complete',
+      inProgressLabel: 'In Progress',
     },
     features: {
       materials: true,
@@ -326,6 +357,14 @@ const industryProfiles = {
       employee: 'fas fa-broom',
       job: 'fas fa-briefcase',
     },
+    statusWorkflow: [
+      { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
+      { key: 'quote_sent', label: 'Quote Sent', color: '#3b82f6', icon: 'fa-paper-plane' },
+      { key: 'quote_accepted', label: 'Quote Accepted', color: '#10b981', icon: 'fa-handshake' },
+      { key: 'scheduled', label: 'Scheduled', color: '#6366f1', icon: 'fa-calendar-check' },
+      { key: 'in-progress', label: 'In Progress', color: '#8b5cf6', icon: 'fa-broom' },
+      { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },
+    ],
     serviceConfig: {
       categories: [
         'Residential', 'Commercial', 'Deep Clean', 'End of Tenancy',
@@ -427,6 +466,11 @@ const industryProfiles = {
       calendarTab: 'Reservations',
       callsTab: 'Calls',
       crmTab: 'Guests',
+      statusBusy: 'Working',
+      statusAvailable: 'Available',
+      startAction: 'Start Shift',
+      completeAction: 'End Shift',
+      inProgressLabel: 'Working',
     },
     features: {
       materials: true,
@@ -446,7 +490,7 @@ const industryProfiles = {
       calls: true,
       calendar: true,
       employees: true,
-      crm: true,
+      crm: false,               // Restaurants typically don't need a CRM pipeline
       services: true,
       inventory: true,
       finances: true,
@@ -456,6 +500,12 @@ const industryProfiles = {
       employee: 'fas fa-utensils',
       job: 'fas fa-calendar-check',
     },
+    statusWorkflow: [
+      { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
+      { key: 'scheduled', label: 'Confirmed', color: '#6366f1', icon: 'fa-calendar-check' },
+      { key: 'in-progress', label: 'Seated', color: '#8b5cf6', icon: 'fa-utensils' },
+      { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },
+    ],
     serviceConfig: {
       categories: [
         'Starters', 'Mains', 'Desserts', 'Sides', 'Drinks',

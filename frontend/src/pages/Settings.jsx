@@ -41,7 +41,7 @@ function Settings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { checkAuth, logout, subscription: authSubscription } = useAuth();
-  const { availableIndustries } = useIndustry();
+  const { availableIndustries, terminology: industryTerminology } = useIndustry();
   
   // Determine if user has AI features based on plan
   const currentPlan = authSubscription?.plan || 'pro';
@@ -1660,7 +1660,7 @@ function Settings() {
                     <div className="toggle-row">
                       <div className="toggle-row-info">
                         <div className="toggle-row-label">Send Invoice Buttons</div>
-                        <div className="toggle-row-desc">Show invoice buttons on jobs and finances</div>
+                        <div className="toggle-row-desc">Show invoice buttons on {industryTerminology?.jobs?.toLowerCase() || 'jobs'} and finances</div>
                       </div>
                       <label className="toggle-switch">
                         <input type="checkbox" checked={formData.show_invoice_buttons !== false}

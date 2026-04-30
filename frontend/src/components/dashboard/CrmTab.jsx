@@ -360,6 +360,7 @@ function CrmTab({ clients, bookings = [] }) {
             setCustomerSort={setCustomerSort}
             onSelectClient={setSelectedClientId}
             crmStats={crmStats}
+            terminology={terminology}
             onPortalLink={(clientId) => {
               generatePortalLink(clientId).then(res => {
                 navigator.clipboard?.writeText(res.data.link);
@@ -396,7 +397,7 @@ function CrmTab({ clients, bookings = [] }) {
 
       {/* Reviews View */}
       {activeView === 'reviews' && (
-        <ReviewsView reviews={reviews} reviewStats={reviewStats} />
+        <ReviewsView reviews={reviews} reviewStats={reviewStats} terminology={terminology} />
       )}
 
       {/* Modals */}
@@ -623,13 +624,15 @@ function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert, onCal
 /* ============================================
    CUSTOMERS VIEW
    ============================================ */
-function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFilter, customerSort, setCustomerSort, onSelectClient, crmStats, onPortalLink, onEmailClient }) {
+function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFilter, customerSort, setCustomerSort, onSelectClient, crmStats, onPortalLink, onEmailClient, terminology = {} }) {
+  const clientsLabel = (terminology.clients || 'customers').toLowerCase();
+  const clientLabel = (terminology.client || 'customer').toLowerCase();
   const SEGMENTS = [
-    { key: 'all', label: 'All', icon: 'fa-users', color: '#64748b', tip: 'All customers' },
-    { key: 'vip', label: 'VIP', icon: 'fa-crown', color: '#f59e0b', tip: 'Repeat customers with €500+ revenue — auto-assigned' },
-    { key: 'loyal', label: 'Loyal', icon: 'fa-heart', color: '#ec4899', tip: 'Customers with 2+ completed jobs' },
-    { key: 'regular', label: 'Regular', icon: 'fa-user', color: '#3b82f6', tip: 'Active customers with at least one job' },
-    { key: 'new', label: 'New', icon: 'fa-user-plus', color: '#10b981', tip: 'Recently added, no jobs yet' },
+    { key: 'all', label: 'All', icon: 'fa-users', color: '#64748b', tip: `All ${clientsLabel}` },
+    { key: 'vip', label: 'VIP', icon: 'fa-crown', color: '#f59e0b', tip: `Repeat ${clientsLabel} with €500+ revenue — auto-assigned` },
+    { key: 'loyal', label: 'Loyal', icon: 'fa-heart', color: '#ec4899', tip: `${terminology.clients || 'Customers'} with 2+ completed ${(terminology.jobs || 'jobs').toLowerCase()}` },
+    { key: 'regular', label: 'Regular', icon: 'fa-user', color: '#3b82f6', tip: `Active ${clientsLabel} with at least one ${(terminology.job || 'job').toLowerCase()}` },
+    { key: 'new', label: 'New', icon: 'fa-user-plus', color: '#10b981', tip: `Recently added, no ${(terminology.jobs || 'jobs').toLowerCase()} yet` },
     { key: 'dormant', label: 'Dormant', icon: 'fa-moon', color: '#94a3b8', tip: 'No activity in 120+ days' },
   ];
 
@@ -667,10 +670,10 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
         {customers.length === 0 ? (
           <div className="crm-empty">
             <i className="fas fa-users"></i>
-            <h3>No customers found</h3>
+            <h3>No {clientsLabel} found</h3>
             <p>{customerFilter !== 'all'
-              ? 'No customers match this filter. Try "All" to see everyone.'
-              : 'Customers will appear here as you add them or convert leads.'}</p>
+              ? `No ${clientsLabel} match this filter. Try "All" to see everyone.`
+              : `${terminology.clients || 'Customers'} will appear here as you add them or convert leads.`}</p>
           </div>
         ) : (
           customers.map(c => (
@@ -772,7 +775,7 @@ function SegmentBadge({ segment }) {
 /* ============================================
    REVIEWS VIEW
    ============================================ */
-function ReviewsView({ reviews, reviewStats }) {
+function ReviewsView({ reviews, reviewStats, terminology = {} }) {
   return (
     <>
       {/* Review Stats - compact strip */}
@@ -805,7 +808,7 @@ function ReviewsView({ reviews, reviewStats }) {
         <div className="crm-empty">
           <i className="fas fa-star"></i>
           <h3>No reviews yet</h3>
-          <p>When you complete jobs for customers with email addresses, they'll receive a satisfaction survey.</p>
+          <p>When you complete {(terminology.jobs || 'jobs').toLowerCase()} for {(terminology.clients || 'customers').toLowerCase()} with email addresses, they'll receive a satisfaction survey.</p>
         </div>
       ) : (
         <div className="crm-reviews-list">

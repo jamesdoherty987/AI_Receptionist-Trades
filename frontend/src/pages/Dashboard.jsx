@@ -203,14 +203,14 @@ function Dashboard() {
       badge: jobBadges,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
-    ...(hasAIFeatures && currentPlan !== 'dashboard' && adminVis.calls !== false ? [{
+    ...(hasAIFeatures && currentPlan !== 'dashboard' && adminVis.calls !== false && industryTabs.calls !== false ? [{
       label: terminology.callsTab || 'Calls',
       icon: 'fas fa-phone-alt',
       group: 'Day-to-Day',
       badge: unseenCalls,
       content: <Suspense fallback={tabFallback}><CallLogsTab /></Suspense>
     }] : []),
-    ...(adminVis.calendar !== false ? [{
+    ...(adminVis.calendar !== false && industryTabs.calendar !== false ? [{
       label: terminology.calendarTab || 'Calendar',
       icon: 'fas fa-calendar',
       group: 'Day-to-Day',
@@ -236,14 +236,14 @@ function Dashboard() {
       content: <Suspense fallback={tabFallback}><OrdersTab /></Suspense>
     }] : []),
     // Team & Clients
-    ...(adminVis.employees !== false ? [{
+    ...(adminVis.employees !== false && industryTabs.employees !== false ? [{
       label: terminology.employees,
       icon: icons.employee || 'fas fa-hard-hat',
       group: 'Team & Clients',
       badge: totalUnreadMessages,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><EmployeesTab employees={employees} bookings={bookings} /></Suspense>
     }] : []),
-    ...(adminVis.crm !== false ? [{
+    ...(adminVis.crm !== false && industryTabs.crm !== false ? [{
       label: terminology.crmTab || 'CRM',
       icon: 'fas fa-address-book',
       group: 'Team & Clients',
@@ -251,7 +251,7 @@ function Dashboard() {
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><CrmTab clients={clients} bookings={bookings} /></Suspense>
     }] : []),
     // Setup
-    ...(adminVis.services !== false ? [{
+    ...(adminVis.services !== false && industryTabs.services !== false ? [{
       label: terminology.servicesTab || 'Services',
       icon: 'fas fa-concierge-bell',
       group: 'Setup',
@@ -264,13 +264,13 @@ function Dashboard() {
       content: <Suspense fallback={tabFallback}><InventoryTab /></Suspense>
     }] : []),
     // Reports
-    ...(adminVis.finances !== false && settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
+    ...(adminVis.finances !== false && industryTabs.finances !== false && settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
       label: terminology.financesTab || 'Finances',
       icon: 'fas fa-dollar-sign',
       group: 'Reports',
       content: <Suspense fallback={tabFallback}><FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
-    ...(adminVis.insights !== false && settings?.show_insights_tab !== false ? [{
+    ...(adminVis.insights !== false && industryTabs.insights !== false && settings?.show_insights_tab !== false ? [{
       label: terminology.insightsTab || 'Insights',
       icon: 'fas fa-chart-pie',
       group: 'Reports',

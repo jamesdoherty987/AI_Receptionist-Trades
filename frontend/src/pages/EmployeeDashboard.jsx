@@ -71,7 +71,7 @@ function JobTimer({ startedAt }) {
 
 function EmployeeDashboard() {
   const { user, logout } = useAuth();
-  const { terminology } = useIndustry();
+  const { terminology, statusWorkflow } = useIndustry();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { addToast } = useToast();
@@ -320,7 +320,7 @@ function EmployeeDashboard() {
       queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
     },
     onError: (err) => {
-      addToast(err.response?.data?.error || 'Failed to update job status. Please try again.', 'error');
+      addToast(err.response?.data?.error || `Failed to update ${(terminology.job || 'job').toLowerCase()} status. Please try again.`, 'error');
     },
   });
 
@@ -330,10 +330,10 @@ function EmployeeDashboard() {
       queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
       setIsEditingJobDetails(false);
-      addToast('Job details updated', 'success');
+      addToast(`${terminology.job || 'Job'} details updated`, 'success');
     },
     onError: (err) => {
-      addToast(err.response?.data?.error || 'Failed to update job details', 'error');
+      addToast(err.response?.data?.error || `Failed to update ${(terminology.job || 'job').toLowerCase()} details`, 'error');
     },
   });
 
@@ -365,7 +365,7 @@ function EmployeeDashboard() {
       const resData = response.data;
       if (resData?.has_conflicts && resData.conflicting_jobs?.length > 0) {
         const jobCount = resData.conflicting_jobs.length;
-        addToast(`Note: You have ${jobCount} existing job(s) during this period. Your manager will see this when reviewing.`, 'warning');
+        addToast(`Note: You have ${jobCount} existing ${(terminology.job || 'job').toLowerCase()}(s) during this period. Your manager will see this when reviewing.`, 'warning');
       }
     },
     onError: (err) => {
@@ -417,10 +417,10 @@ function EmployeeDashboard() {
       queryClient.invalidateQueries({ queryKey: ['employee-hours-summary'] });
       setBulkCompleteFilter(null);
       const count = response?.data?.completed_count;
-      addToast(count ? `${count} job(s) marked complete` : 'Jobs marked complete', 'success');
+      addToast(count ? `${count} ${(terminology.job || 'job').toLowerCase()}(s) marked complete` : `${terminology.jobs || 'Jobs'} marked complete`, 'success');
     },
     onError: (err) => {
-      addToast(err.response?.data?.error || 'Failed to complete jobs', 'error');
+      addToast(err.response?.data?.error || `Failed to complete ${(terminology.jobs || 'jobs').toLowerCase()}`, 'error');
     },
   });
 
@@ -623,7 +623,7 @@ function EmployeeDashboard() {
     { id: 'jobs', label: `My ${terminology.jobs}`, icon: 'fas fa-briefcase' },
     { id: 'messages', label: 'Messages', icon: 'fas fa-comment-dots' },
     { id: 'schedule', label: 'Schedule', icon: 'fas fa-calendar' },
-    { id: 'customers', label: terminology.clients, icon: 'fas fa-users' },
+    { id: 'customers', label: terminology.clients || 'Customers', icon: 'fas fa-users' },
     { id: 'hr', label: 'HR', icon: 'fas fa-user-clock' },
     { id: 'profile', label: 'Profile', icon: 'fas fa-user' },
   ];
@@ -656,7 +656,7 @@ function EmployeeDashboard() {
         <header className="employee-header">
           <div className="employee-header-content">
             <button className="employee-back-btn" onClick={() => { setSelectedJobId(null); setShowAddMaterial(false); }}>
-              <i className="fas fa-arrow-left"></i> Back to Jobs
+              <i className="fas fa-arrow-left"></i> Back to {terminology.jobs}
             </button>
             <div className="employee-header-right">
               <span className="employee-greeting">Hi, {user?.name || 'Employee'}</span>
@@ -670,7 +670,7 @@ function EmployeeDashboard() {
         <main className="employee-main">
           <div className="employee-container">
             {loadingJob ? <LoadingSpinner /> : !job ? (
-              <div className="employee-empty"><i className="fas fa-exclamation-circle"></i><p>Job not found</p></div>
+              <div className="employee-empty"><i className="fas fa-exclamation-circle"></i><p>{terminology.job || 'Job'} not found</p></div>
             ) : (
               <div className="wjd">
                 {/* Job Header */}
@@ -693,7 +693,7 @@ function EmployeeDashboard() {
                         setJobTimerStart(now);
                         statusMutation.mutate({ jobId: selectedJobId, status: 'in-progress', started_at: now });
                       }} disabled={statusMutation.isPending}>
-                        <i className="fas fa-play-circle"></i> Start Job
+                        <i className="fas fa-play-circle"></i> {terminology.startAction || 'Start Job'}
                       </button>
                     )}
                     {/* Live timer when in-progress */}
@@ -718,7 +718,7 @@ function EmployeeDashboard() {
                         });
                         setJobTimerStart(null);
                       }} disabled={statusMutation.isPending}>
-                        <i className="fas fa-check-circle"></i> Mark Complete
+                        <i className="fas fa-check-circle"></i> {terminology.completeAction || 'Mark Complete'}
                       </button>
                     )}
                     {/* Status dropdown for all statuses */}
@@ -733,12 +733,27 @@ function EmployeeDashboard() {
                           <div className="wjd-dropdown-backdrop" onClick={() => setShowStatusDropdown(false)}></div>
                           <div className="wjd-dropdown-menu">
                             {[
-                              { value: 'pending', label: 'Pending', icon: 'fas fa-clock', color: '#f59e0b' },
-                              { value: 'confirmed', label: 'Confirmed', icon: 'fas fa-calendar-check', color: '#3b82f6' },
-                              { value: 'scheduled', label: 'Scheduled', icon: 'fas fa-calendar-alt', color: '#6366f1' },
-                              { value: 'in-progress', label: 'In Progress', icon: 'fas fa-wrench', color: '#8b5cf6' },
-                              { value: 'completed', label: 'Completed', icon: 'fas fa-check-circle', color: '#22c55e' },
-                              { value: 'paid', label: 'Paid', icon: 'fas fa-money-check-alt', color: '#10b981' },
+                              ...((() => {
+                                // Use industry statusWorkflow if available, with fallback icons/colors
+                                const defaultColors = { pending: '#f59e0b', scheduled: '#6366f1', confirmed: '#3b82f6', 'in-progress': '#8b5cf6', completed: '#22c55e' };
+                                const defaultIcons = { pending: 'fas fa-clock', scheduled: 'fas fa-calendar-alt', confirmed: 'fas fa-calendar-check', 'in-progress': 'fas fa-wrench', completed: 'fas fa-check-circle' };
+                                const wf = (typeof statusWorkflow !== 'undefined' && statusWorkflow) || [];
+                                if (wf.length > 0) {
+                                  return wf.map(s => ({
+                                    value: s.key,
+                                    label: s.label,
+                                    icon: s.icon ? `fas ${s.icon}` : (defaultIcons[s.key] || 'fas fa-circle'),
+                                    color: s.color || defaultColors[s.key] || '#6b7280',
+                                  }));
+                                }
+                                return [
+                                  { value: 'pending', label: 'Pending', icon: 'fas fa-clock', color: '#f59e0b' },
+                                  { value: 'confirmed', label: 'Confirmed', icon: 'fas fa-calendar-check', color: '#3b82f6' },
+                                  { value: 'scheduled', label: 'Scheduled', icon: 'fas fa-calendar-alt', color: '#6366f1' },
+                                  { value: 'in-progress', label: 'In Progress', icon: 'fas fa-wrench', color: '#8b5cf6' },
+                                  { value: 'completed', label: 'Completed', icon: 'fas fa-check-circle', color: '#22c55e' },
+                                ];
+                              })()),
                               { value: 'cancelled', label: 'Cancelled', icon: 'fas fa-times-circle', color: '#ef4444' },
                             ].map(s => (
                               <button key={s.value} 
@@ -906,7 +921,7 @@ function EmployeeDashboard() {
                   const margin = charge > 0 ? (profit / charge * 100) : 0;
                   return (
                     <div className="wjd-card" style={{ background: profit >= 0 ? 'linear-gradient(135deg, #f0fdf4, #ecfdf5)' : 'linear-gradient(135deg, #fef2f2, #fff1f2)', border: `1px solid ${profit >= 0 ? '#bbf7d0' : '#fecaca'}` }}>
-                      <h3 style={{ margin: '0 0 0.5rem 0' }}><i className="fas fa-chart-line"></i> Job Profit</h3>
+                      <h3 style={{ margin: '0 0 0.5rem 0' }}><i className="fas fa-chart-line"></i> {terminology.job || 'Job'} Profit</h3>
                       <div className="wjd-info-row">
                         <div className="wjd-info-cell">
                           <span className="wjd-label">Charged</span>
@@ -931,7 +946,7 @@ function EmployeeDashboard() {
                 <div className="wjd-grid">
                   <div className="wjd-col">
                     <div className="wjd-card">
-                      <h3><i className="fas fa-briefcase"></i> Job Details</h3>
+                      <h3><i className="fas fa-briefcase"></i> {terminology.job || 'Job'} Details</h3>
                       <div className="wjd-info-row">
                         <div className="wjd-info-cell">
                           <span className="wjd-label">Date & Time</span>
@@ -974,7 +989,7 @@ function EmployeeDashboard() {
 
                     {/* Customer Card */}
                     <div className="wjd-card">
-                      <h3><i className="fas fa-user"></i> Customer</h3>
+                      <h3><i className="fas fa-user"></i> {terminology.client || 'Customer'}</h3>
                       <div className="wjd-info-row">
                         <div className="wjd-info-cell">
                           <span className="wjd-label">Name</span>
@@ -1007,7 +1022,7 @@ function EmployeeDashboard() {
                   <div className="wjd-col">
                     {/* Assigned Employees */}
                     <div className="wjd-card">
-                      <h3><i className="fas fa-hard-hat"></i> Team on This Job</h3>
+                      <h3><i className="fas fa-hard-hat"></i> Team on This {terminology.job || 'Job'}</h3>
                       {assignedEmployees.length === 0 ? (
                         <p className="wjd-empty-text">No other employees assigned</p>
                       ) : (
@@ -1166,7 +1181,7 @@ function EmployeeDashboard() {
 
                     {/* Job Notes */}
                     <div className="wjd-card">
-                      <h3><i className="fas fa-clipboard"></i> Job Notes</h3>
+                      <h3><i className="fas fa-clipboard"></i> {terminology.job || 'Job'} Notes</h3>
                       <div className="wjd-notes-form">
                         <textarea
                           className="wjd-note-input"
@@ -1664,7 +1679,7 @@ function EmployeeDashboard() {
 
                 {/* Empty state */}
                 {upcomingJobs.length === 0 && (
-                  <div className="employee-empty"><i className="fas fa-calendar-check"></i><p>No active jobs</p></div>
+                  <div className="employee-empty"><i className="fas fa-calendar-check"></i><p>No active {terminology.jobs?.toLowerCase() || 'jobs'}</p></div>
                 )}
 
                 {/* Completed */}
@@ -1806,7 +1821,7 @@ function EmployeeDashboard() {
                 {scheduleView === 'list' && (
                   <>
                     {schedule.length === 0 ? (
-                      <div className="employee-empty"><i className="fas fa-calendar"></i><p>No scheduled appointments</p></div>
+                      <div className="employee-empty"><i className="fas fa-calendar"></i><p>No scheduled {terminology.jobs?.toLowerCase() || 'jobs'}</p></div>
                     ) : (
                       <div className="employee-schedule-list">
                         {schedule.map((item, idx) => (
@@ -2192,7 +2207,7 @@ function EmployeeDashboard() {
                   {filtered.length === 0 ? (
                     <div className="employee-empty">
                       <i className="fas fa-users"></i>
-                      <p>{customerSearch ? 'No customers match your search' : 'No customers yet — they\'ll appear here as you get assigned jobs'}</p>
+                      <p>{customerSearch ? `No ${(terminology.clients || 'customers').toLowerCase()} match your search` : `No ${(terminology.clients || 'customers').toLowerCase()} yet — they'll appear here as you get assigned ${terminology.jobs?.toLowerCase() || 'jobs'}`}</p>
                     </div>
                   ) : (
                     <div className="wc-list">
@@ -2471,9 +2486,9 @@ function EmployeeDashboard() {
 
                 {/* Job History */}
                 <div className="whr-section" style={{ marginTop: '1.5rem' }}>
-                  <h2><i className="fas fa-history"></i> Job History ({jobs.length} total)</h2>
+                  <h2><i className="fas fa-history"></i> {terminology.job || 'Job'} History ({jobs.length} total)</h2>
                   {jobs.length === 0 ? (
-                    <p className="wjd-empty-text">No job history yet</p>
+                    <p className="wjd-empty-text">No {(terminology.job || 'job').toLowerCase()} history yet</p>
                   ) : (
                     <>
                       <div className="whr-job-history">

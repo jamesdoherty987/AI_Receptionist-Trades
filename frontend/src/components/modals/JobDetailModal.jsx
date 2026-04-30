@@ -48,7 +48,7 @@ import './JobDetailModal.css';
 function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
-  const { terminology, features } = useIndustry();
+  const { terminology, features, statusWorkflow } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const [showAssignEmployee, setShowAssignEmployee] = useState(false);
@@ -594,9 +594,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      addToast('Job marked as paid', 'success');
+      addToast(`${terminology.job || 'Job'} marked as paid`, 'success');
     },
-    onError: () => addToast('Failed to mark job as paid', 'error'),
+    onError: () => addToast(`Failed to mark ${(terminology.job || 'job').toLowerCase()} as paid`, 'error'),
   });
 
   const unmarkPaidMutation = useMutation({
@@ -757,7 +757,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       <Modal isOpen={isOpen} onClose={onClose} title={`${terminology.job || 'Job'} Details`} size="xlarge">
         <div className="modal-loading">
           <div className="loading-spinner"></div>
-          <p>Loading job details...</p>
+          <p>Loading {(terminology.job || 'job').toLowerCase()} details...</p>
         </div>
       </Modal>
     );
@@ -794,13 +794,22 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         <div className="job-modal-header">
           <div className="job-modal-title">
             <h2>{job.customer_name}</h2>
-            <span className={`badge badge-lg ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+            <span className={`badge badge-lg ${getStatusBadgeClass(job.status)}`}>{
+              (() => {
+                const wf = statusWorkflow || [];
+                const match = wf.find(s => s.key === job.status);
+                if (match) return match.label;
+                if (job.status === 'paid') return 'Completed';
+                if (job.status === 'confirmed') return wf.find(s => s.key === 'scheduled')?.label || 'Scheduled';
+                return job.status;
+              })()
+            }</span>
             {job.status_label && <span className="badge badge-custom-status"><i className="fas fa-tag"></i> {job.status_label}</span>}
           </div>
           <div className="job-modal-actions">
             {!isEditing ? (
               <>
-                <button className="btn btn-edit" onClick={() => setIsEditing(true)} title="Edit job details">
+                <button className="btn btn-edit" onClick={() => setIsEditing(true)} title={`Edit ${(terminology.job || 'job').toLowerCase()} details`}>
                   <i className="fas fa-pen"></i> Edit
                 </button>
                 {!!(job.estimated_charge || job.charge) && showInvoiceButtons && (
@@ -817,20 +826,20 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                 <button
                   className="btn btn-secondary"
                   onClick={() => setShowCreateQuote(true)}
-                  title="Create a quote from this job's details"
+                  title={`Create a quote from this ${(terminology.job || 'job').toLowerCase()}'s details`}
                 >
                   <i className="fas fa-file-invoice"></i>
                   Quote
                 </button>
                 {job.payment_status !== 'paid' && (
                   <button className="btn btn-success" onClick={() => markPaidMutation.mutate()} disabled={markPaidMutation.isPending}
-                    title="Manually mark this job as paid">
+                    title={`Manually mark this ${(terminology.job || 'job').toLowerCase()} as paid`}>
                     <i className={`fas ${markPaidMutation.isPending ? 'fa-spinner fa-spin' : 'fa-check-circle'}`}></i>
                     {markPaidMutation.isPending ? 'Marking...' : 'Mark Paid'}
                   </button>
                 )}
                 {job.payment_status === 'paid' && (
-                  <button className="btn btn-danger-outline" onClick={openRefundModal} title="Issue a refund for this job">
+                  <button className="btn btn-danger-outline" onClick={openRefundModal} title={`Issue a refund for this ${(terminology.job || 'job').toLowerCase()}`}>
                     <i className="fas fa-undo"></i> Refund
                   </button>
                 )}
@@ -859,12 +868,12 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </button>
                   <div className="status-dropdown-menu">
                     {[
-                      { key: 'pending', icon: 'fa-clock', color: '#f59e0b', label: 'New' },
-                      { key: 'quote_sent', icon: 'fa-paper-plane', color: '#3b82f6', label: 'Quote Sent' },
-                      { key: 'quote_accepted', icon: 'fa-handshake', color: '#10b981', label: 'Quote Accepted' },
-                      { key: 'scheduled', icon: 'fa-calendar-check', color: '#6366f1', label: 'Scheduled' },
-                      { key: 'in-progress', icon: 'fa-wrench', color: '#8b5cf6', label: 'In Progress' },
-                      { key: 'completed', icon: 'fa-check-circle', color: '#22c55e', label: 'Completed' },
+                      ...(statusWorkflow || [
+                        { key: 'pending', icon: 'fa-clock', color: '#f59e0b', label: 'New' },
+                        { key: 'scheduled', icon: 'fa-calendar-check', color: '#6366f1', label: 'Scheduled' },
+                        { key: 'in-progress', icon: 'fa-wrench', color: '#8b5cf6', label: 'In Progress' },
+                        { key: 'completed', icon: 'fa-check-circle', color: '#22c55e', label: 'Completed' },
+                      ]),
                       { key: 'cancelled', icon: 'fa-times-circle', color: '#ef4444', label: 'Cancelled' },
                     ].map(s => (
                       <button key={s.key} onClick={() => handleStatusChange(s.key)} className={job.status === s.key ? 'active' : ''}>
@@ -938,7 +947,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   }}></div>
                 </div>
                 {job.status !== 'rejected' && job.status !== 'cancelled' && job.status !== 'completed' && (
-                  <button className="btn btn-danger-outline" onClick={() => setShowRejectModal(true)} title="Reject this job and notify the customer">
+                  <button className="btn btn-danger-outline" onClick={() => setShowRejectModal(true)} title={`Reject this ${(terminology.job || 'job').toLowerCase()} and notify the ${(terminology.client || 'customer').toLowerCase()}`}>
                     <i className="fas fa-ban"></i> Reject
                   </button>
                 )}
@@ -977,7 +986,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
           <div className="job-modal-column">
             {/* Job Details */}
             <div className="info-card">
-              <h3><i className="fas fa-briefcase"></i> Job Details</h3>
+              <h3><i className="fas fa-briefcase"></i> {terminology.job || 'Job'} Details</h3>
               {isEditing ? (
                 <div className="edit-form">
                   <div className="edit-row">
@@ -1131,10 +1140,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                                 <span className="jdm-sd-value">{matchedServiceOrPackage.data.employees_required}</span>
                               </div>
                             )}
-                            {matchedServiceOrPackage.data.requires_callout && (
+                            {features.callouts && matchedServiceOrPackage.data.requires_callout && (
                               <div className="jdm-sd-badge"><i className="fas fa-phone-alt"></i> Requires callout</div>
                             )}
-                            {matchedServiceOrPackage.data.requires_quote && (
+                            {features.quotes && matchedServiceOrPackage.data.requires_quote && (
                               <div className="jdm-sd-badge"><i className="fas fa-file-invoice"></i> Requires quote</div>
                             )}
                           </>
@@ -1542,7 +1551,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                 {!assignedEmployees || assignedEmployees.length === 0 ? (
                   <div className="empty-employees">
                     <i className="fas fa-user-plus"></i>
-                    <p>No employees assigned</p>
+                    <p>No {(terminology.employees || 'employees').toLowerCase()} assigned</p>
                   </div>
                 ) : (
                   assignedEmployees.map(employee => (

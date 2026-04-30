@@ -12,6 +12,21 @@ import { Social6_IMessage, Social7_BeforeAfter, Social8_Reviews, Landscape1_HowI
 import { Social9_PlumberScene, Social10_Competitor, Social11_MoneyCounter, Landscape3_DayTimeline, Landscape4_PhoneStorm } from "./SocialPack3";
 import { Social12_WouldYouRather, Social13_GuessPrice, Social14_YourWeek, Landscape5_Domino, Landscape6_Bingo } from "./SocialPack4";
 import { Social15_Storytime, Social16_TheMath, Social17_SwipeRight, Landscape7_WarRoom, Landscape8_YearReview } from "./SocialPack5";
+// Premium pack — intentionally new visual languages (not reused from SocialPack*)
+import {
+  Editorial_Headline,
+  SplitFlap_Metrics,
+  IsoCity_CallFunnel,
+  MacApp_Cursor,
+  Newsroom_Breaking,
+} from "./EditorialPack";
+import {
+  Kinetic_Typography,
+  Voicemail_LiveTrans,
+  Noir_Split,
+  Whiteboard_Annotated,
+  Liquid_Blob_Close,
+} from "./PremiumPack";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -107,6 +122,20 @@ export const RemotionRoot: React.FC = () => {
       <Composition id="Social-SwipeRight" component={Social17_SwipeRight} durationInFrames={340} fps={30} width={1080} height={1920} />
       <Composition id="Landscape-WarRoom" component={Landscape7_WarRoom} durationInFrames={400} fps={30} width={1920} height={1080} />
       <Composition id="Landscape-YearReview" component={Landscape8_YearReview} durationInFrames={520} fps={30} width={1920} height={1080} />
+
+      {/* ═════ NEW PREMIUM PACK — 10 fundamentally different videos ═════ */}
+      {/* Landscape (1920x1080) */}
+      <Composition id="Premium-Editorial"   component={Editorial_Headline}  durationInFrames={890} fps={30} width={1920} height={1080} />
+      <Composition id="Premium-SplitFlap"   component={SplitFlap_Metrics}   durationInFrames={330} fps={30} width={1920} height={1080} />
+      <Composition id="Premium-IsoCity"     component={IsoCity_CallFunnel}  durationInFrames={460} fps={30} width={1920} height={1080} />
+      <Composition id="Premium-MacApp"      component={MacApp_Cursor}       durationInFrames={700} fps={30} width={1920} height={1080} />
+      <Composition id="Premium-Newsroom"    component={Newsroom_Breaking}   durationInFrames={660} fps={30} width={1920} height={1080} />
+      {/* Vertical (1080x1920) */}
+      <Composition id="Premium-Kinetic"     component={Kinetic_Typography}  durationInFrames={360} fps={30} width={1080} height={1920} />
+      <Composition id="Premium-Voicemail"   component={Voicemail_LiveTrans} durationInFrames={650} fps={30} width={1080} height={1920} />
+      <Composition id="Premium-Noir"        component={Noir_Split}          durationInFrames={620} fps={30} width={1080} height={1920} />
+      <Composition id="Premium-Whiteboard"  component={Whiteboard_Annotated} durationInFrames={770} fps={30} width={1080} height={1920} />
+      <Composition id="Premium-LiquidBlob"  component={Liquid_Blob_Close}   durationInFrames={450} fps={30} width={1080} height={1920} />
     </>
   );
 };

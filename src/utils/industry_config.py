@@ -98,6 +98,12 @@ INDUSTRY_PROFILES = {
             'calendarTab': 'Calendar',
             'callsTab': 'Calls',
             'crmTab': 'CRM',
+            # Status / action labels used in UI
+            'statusBusy': 'On Job',
+            'statusAvailable': 'Available',
+            'startAction': 'Start Job',
+            'completeAction': 'Mark Complete',
+            'inProgressLabel': 'In Progress',
         },
         'features': {
             'materials': True,
@@ -115,6 +121,15 @@ INDUSTRY_PROFILES = {
             'default_urgency': 'scheduled',
             'urgency_options': ['scheduled', 'same-day', 'quote', 'emergency'],
         },
+        # ── Status workflow (board columns & status options) ─────────
+        'status_workflow': [
+            {'key': 'pending', 'label': 'New'},
+            {'key': 'quote_sent', 'label': 'Quote Sent'},
+            {'key': 'quote_accepted', 'label': 'Quote Accepted'},
+            {'key': 'scheduled', 'label': 'Scheduled'},
+            {'key': 'in-progress', 'label': 'In Progress'},
+            {'key': 'completed', 'label': 'Completed'},
+        ],
         'service_config': {
             'show_category': True,
             'show_tags': True,
@@ -185,6 +200,11 @@ INDUSTRY_PROFILES = {
             'calendarTab': 'Calendar',
             'callsTab': 'Calls',
             'crmTab': 'CRM',
+            'statusBusy': 'With Client',
+            'statusAvailable': 'Available',
+            'startAction': 'Start Appointment',
+            'completeAction': 'Mark Complete',
+            'inProgressLabel': 'In Progress',
         },
         'features': {
             'materials': True,
@@ -202,6 +222,12 @@ INDUSTRY_PROFILES = {
             'default_urgency': 'scheduled',
             'urgency_options': ['scheduled'],
         },
+        'status_workflow': [
+            {'key': 'pending', 'label': 'New'},
+            {'key': 'scheduled', 'label': 'Scheduled'},
+            {'key': 'in-progress', 'label': 'In Progress'},
+            {'key': 'completed', 'label': 'Completed'},
+        ],
         'service_config': {
             'show_category': True,
             'show_tags': True,
@@ -291,6 +317,11 @@ INDUSTRY_PROFILES = {
             'calendarTab': 'Calendar',
             'callsTab': 'Calls',
             'crmTab': 'CRM',
+            'statusBusy': 'On Job',
+            'statusAvailable': 'Available',
+            'startAction': 'Start Job',
+            'completeAction': 'Mark Complete',
+            'inProgressLabel': 'In Progress',
         },
         'features': {
             'materials': True,
@@ -308,6 +339,14 @@ INDUSTRY_PROFILES = {
             'default_urgency': 'scheduled',
             'urgency_options': ['scheduled', 'quote'],
         },
+        'status_workflow': [
+            {'key': 'pending', 'label': 'New'},
+            {'key': 'quote_sent', 'label': 'Quote Sent'},
+            {'key': 'quote_accepted', 'label': 'Quote Accepted'},
+            {'key': 'scheduled', 'label': 'Scheduled'},
+            {'key': 'in-progress', 'label': 'In Progress'},
+            {'key': 'completed', 'label': 'Completed'},
+        ],
         'service_config': {
             'show_category': True,
             'show_tags': True,
@@ -381,6 +420,11 @@ INDUSTRY_PROFILES = {
             'calendarTab': 'Reservations',
             'callsTab': 'Calls',
             'crmTab': 'Guests',
+            'statusBusy': 'Working',
+            'statusAvailable': 'Available',
+            'startAction': 'Start Shift',
+            'completeAction': 'End Shift',
+            'inProgressLabel': 'Working',
         },
         'features': {
             'materials': True,
@@ -401,6 +445,12 @@ INDUSTRY_PROFILES = {
             'default_urgency': 'scheduled',
             'urgency_options': ['scheduled'],
         },
+        'status_workflow': [
+            {'key': 'pending', 'label': 'New'},
+            {'key': 'scheduled', 'label': 'Confirmed'},
+            {'key': 'in-progress', 'label': 'Seated'},
+            {'key': 'completed', 'label': 'Completed'},
+        ],
         'service_config': {
             'show_category': True,
             'show_tags': True,
@@ -486,3 +536,13 @@ def get_address_capture_config(industry_type: str = None) -> dict:
     """
     profile = get_industry_profile(industry_type)
     return profile.get('address_capture', INDUSTRY_PROFILES[DEFAULT_INDUSTRY]['address_capture'])
+
+
+def get_status_workflow(industry_type: str = None) -> list:
+    """Get the status workflow (board columns) for an industry.
+    
+    Returns a list of dicts with 'key' and 'label'.
+    Falls back to DEFAULT_INDUSTRY if industry_type is unknown.
+    """
+    profile = get_industry_profile(industry_type)
+    return profile.get('status_workflow', INDUSTRY_PROFILES[DEFAULT_INDUSTRY]['status_workflow'])

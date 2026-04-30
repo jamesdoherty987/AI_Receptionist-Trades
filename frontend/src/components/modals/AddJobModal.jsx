@@ -266,7 +266,7 @@ function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId 
       onClose();
       addToast(`${terminology.job} created successfully!`, 'success');
     },
-    onError: (error) => { addToast('Error creating job: ' + (error.response?.data?.error || error.message), 'error'); }
+    onError: (error) => { addToast(`Error creating ${terminology.job.toLowerCase()}: ` + (error.response?.data?.error || error.message), 'error'); }
   });
 
   const resetForm = () => {
@@ -479,7 +479,7 @@ function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId 
                   </div>
                   <div className="customer-picker-list">
                     {filteredCustomers.length === 0 ? (
-                      <div className="customer-picker-empty"><p>No customers found</p></div>
+                      <div className="customer-picker-empty"><p>No {(terminology.clients || 'customers').toLowerCase()} found</p></div>
                     ) : filteredCustomers.slice(0, 10).map(customer => (
                       <div key={customer.id} className="customer-picker-item" onClick={() => handleSelectCustomer(customer)}>
                         <div className="customer-picker-avatar">{customer.name?.charAt(0).toUpperCase() || '?'}</div>

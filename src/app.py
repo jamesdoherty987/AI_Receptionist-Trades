@@ -2443,9 +2443,15 @@ def employee_update_job_status(job_id):
     data = request.json
     new_status = data.get('status', '').strip()
 
-    allowed_statuses = ['pending', 'confirmed', 'quote_sent', 'scheduled', 'in-progress', 'completed', 'cancelled']
+    # Build allowed statuses from industry config so each industry can define its own workflow.
+    # We always allow 'cancelled' as a terminal status and common system statuses (confirmed, paid, rejected).
+    from src.utils.industry_config import get_status_workflow
+    company = db.get_company(company_id) if company_id else None
+    industry_type = (company or {}).get('industry_type', 'trades')
+    workflow_statuses = [s['key'] for s in get_status_workflow(industry_type)]
+    allowed_statuses = list(set(workflow_statuses + ['confirmed', 'paid', 'cancelled', 'rejected']))
     if new_status not in allowed_statuses:
-        return jsonify({"error": f"Invalid status. Allowed: {', '.join(allowed_statuses)}"}), 400
+        return jsonify({"error": f"Invalid status. Allowed: {', '.join(sorted(allowed_statuses))}"}), 400
 
     # Build update kwargs
     update_kwargs = {'status': new_status}

@@ -27,7 +27,7 @@ const STATUS_FILTERS = [
 function JobsTab({ bookings, showInvoiceButtons = true }) {
   const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
-  const { terminology, features } = useIndustry();
+  const { terminology, features, statusWorkflow } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,7 +93,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     },
     onError: (_, __, context) => {
       if (context?.previousDashboard) queryClient.setQueryData(['dashboard'], context.previousDashboard);
-      addToast('Failed to mark job as paid', 'error');
+      addToast(`Failed to mark ${terminology.job.toLowerCase()} as paid`, 'error');
       setMarkingPaidJobId(null);
     }
   });
@@ -287,7 +287,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // In Progress (always shown first if any)
     const inProg = jobs.filter(j => j.status === 'in-progress');
-    if (inProg.length > 0) sections.push({ key: 'in-progress', label: 'In Progress', icon: 'fa-wrench', color: '#8b5cf6', jobs: inProg });
+    if (inProg.length > 0) sections.push({ key: 'in-progress', label: terminology.inProgressLabel || 'In Progress', icon: 'fa-wrench', color: '#8b5cf6', jobs: inProg });
 
     // Overdue
     const overdue = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && parseServerDate(j.appointment_time) < now);
@@ -343,10 +343,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     return addr || code || 'No address';
   };
 
-  const BOARD_COLUMNS = [
+  // Board columns from industry config — no more hardcoded workflow
+  const BOARD_COLUMNS = statusWorkflow || [
     { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
-    { key: 'quote_sent', label: 'Quote Sent', color: '#3b82f6', icon: 'fa-paper-plane' },
-    { key: 'quote_accepted', label: 'Quote Accepted', color: '#10b981', icon: 'fa-handshake' },
     { key: 'scheduled', label: 'Scheduled', color: '#6366f1', icon: 'fa-calendar-check' },
     { key: 'in-progress', label: 'In Progress', color: '#8b5cf6', icon: 'fa-wrench' },
     { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },
@@ -448,16 +447,18 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                         <div className="jt-card-top">
                           <h4>{job.customer_name || 'Unknown'}</h4>
                           {(!job.assigned_employee_ids || job.assigned_employee_ids.length === 0) && !['completed', 'cancelled', 'rejected'].includes(job.status) && (
-                            <span className="jt-no-employee-badge" title="No employee assigned to this job">
-                              <i className="fas fa-exclamation-triangle"></i> No Employee Assigned
+                            <span className="jt-no-employee-badge" title={`No ${terminology.employee?.toLowerCase() || 'employee'} assigned to this ${terminology.job?.toLowerCase() || 'job'}`}>
+                              <i className="fas fa-exclamation-triangle"></i> No {terminology.employee || 'Employee'} Assigned
                             </span>
                           )}
                           <span className={`jt-status-badge jt-status-${job.status === 'paid' ? 'completed' : job.status}`}>{
-                            job.status === 'in-progress' ? 'In Progress' :
-                            job.status === 'quote_sent' ? 'Quote Sent' :
-                            job.status === 'pending' ? 'New' :
-                            job.status === 'paid' ? 'Completed' :
-                            job.status
+                            (() => {
+                              const wfMatch = BOARD_COLUMNS.find(c => c.key === job.status);
+                              if (wfMatch) return wfMatch.label;
+                              if (job.status === 'paid') return 'Completed';
+                              if (job.status === 'confirmed') return BOARD_COLUMNS.find(c => c.key === 'scheduled')?.label || 'Scheduled';
+                              return job.status;
+                            })()
                           }</span>
                           {job.payment_status === 'paid' && <span className="jt-paid-badge"><i className="fas fa-check-circle"></i> Paid</span>}
                           {job.payment_status === 'invoiced' && <span className="jt-invoiced-badge"><i className="fas fa-file-invoice"></i> Invoiced</span>}
@@ -661,10 +662,10 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                       <span className="jt-popup-value">{servicePopup.data.employees_required}</span>
                     </div>
                   )}
-                  {servicePopup.data.requires_callout && (
+                  {features.callouts && servicePopup.data.requires_callout && (
                     <div className="jt-popup-badge"><i className="fas fa-phone-alt"></i> Requires callout</div>
                   )}
-                  {servicePopup.data.requires_quote && (
+                  {features.quotes && servicePopup.data.requires_quote && (
                     <div className="jt-popup-badge"><i className="fas fa-file-invoice"></i> Requires quote</div>
                   )}
                   {servicePopup.data.package_only && (

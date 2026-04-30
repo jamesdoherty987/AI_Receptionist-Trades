@@ -50,6 +50,7 @@ function normaliseBackendProfile(backendProfile, localProfile, availableIndustri
     },
     tabs: localProfile.tabs,   // Tab visibility is frontend-only config (uses 'inventory' key)
     icons: localProfile.icons,
+    statusWorkflow: localProfile.statusWorkflow,  // Industry-specific board columns & status picker
     inventory: localProfile.inventory,  // Industry-specific inventory config (categories, field visibility)
     serviceConfig: localProfile.serviceConfig,  // Industry-specific service form config
     onboarding: {

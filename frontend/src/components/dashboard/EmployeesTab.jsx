@@ -418,7 +418,7 @@ function EmployeesTab({ employees, bookings }) {
             <div className="employees-stats-bar" style={{ marginTop: '0.35rem' }}>
               <span className="ws-stat">{stats.total} total</span>
               <span className="ws-stat available">{stats.available} available</span>
-              {stats.busy > 0 && <span className="ws-stat busy">{stats.busy} on job</span>}
+              {stats.busy > 0 && <span className="ws-stat busy">{stats.busy} {(terminology.statusBusy || 'On Job').toLowerCase()}</span>}
               {stats.onLeave > 0 && <span className="ws-stat leave">{stats.onLeave} on leave</span>}
             </div>
           )}
@@ -478,7 +478,7 @@ function EmployeesTab({ employees, bookings }) {
               className={`filter-pill ${statusFilter === f ? 'active' : ''}`}
               onClick={() => setStatusFilter(f)}
             >
-              {f === 'all' ? 'All' : f === 'available' ? 'Available' : f === 'busy' ? 'On Job' : 'On Leave'}
+              {f === 'all' ? 'All' : f === 'available' ? (terminology.statusAvailable || 'Available') : f === 'busy' ? (terminology.statusBusy || 'On Job') : 'On Leave'}
             </button>
           ))}
         </div>
@@ -702,7 +702,7 @@ function EmployeesTab({ employees, bookings }) {
           {/* Schedule Legend */}
           <div className="schedule-legend">
             <span className="legend-item"><span className="legend-dot legend-shift"></span> On Shift</span>
-            <span className="legend-item"><span className="legend-dot legend-booked"></span> Has Jobs</span>
+            <span className="legend-item"><span className="legend-dot legend-booked"></span> Has {terminology.jobs}</span>
             <span className="legend-item"><span className="legend-dot legend-leave"></span> Time Off</span>
             <span className="legend-item"><span className="legend-dot legend-free"></span> Not Scheduled</span>
             <span className="legend-item"><span className="legend-dot legend-today"></span> Today</span>

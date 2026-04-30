@@ -527,7 +527,7 @@ function InventoryTab() {
             <p className="delete-warning">Remove <strong>{deleteConfirm.name}</strong> from your {(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}?</p>
             <p className="delete-cascade-warning">
               <i className="fas fa-info-circle"></i>
-              Items already logged on jobs won&apos;t be affected.
+              Items already logged on {industry?.terminology?.jobs?.toLowerCase() || 'jobs'} won&apos;t be affected.
             </p>
             <div className="delete-confirm-actions">
               <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>

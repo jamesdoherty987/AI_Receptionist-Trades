@@ -113,11 +113,24 @@ function CustomerPortal() {
   if (error) return <div className="portal-page"><div className="portal-card"><div className="portal-icon">😕</div><h1>Oops</h1><p>{error}</p></div></div>;
   if (!data) return null;
 
-  // Resolve terminology from the industry profile the backend sent, falling back to local config
+  // Resolve terminology and features from the industry profile the backend sent, falling back to local config
   const industryType = data.industry_type || 'trades';
   const backendTerminology = data.industry_profile?.terminology;
   const localProfile = industryProfiles[industryType] || industryProfiles.trades;
   const terminology = backendTerminology || localProfile.terminology;
+  const portalFeatures = data.industry_profile?.features || localProfile.features;
+  const hasQuotes = portalFeatures?.quotes ?? localProfile.features?.quotes ?? true;
+
+  // Resolve status label from workflow config
+  const portalStatusWorkflow = localProfile.statusWorkflow || [];
+  const getStatusLabel = (status) => {
+    const match = portalStatusWorkflow.find(s => s.key === status);
+    if (match) return match.label;
+    if (status === 'confirmed') return portalStatusWorkflow.find(s => s.key === 'scheduled')?.label || 'Confirmed';
+    if (status === 'paid') return 'Completed';
+    // Capitalise raw status as fallback
+    return status ? status.charAt(0).toUpperCase() + status.slice(1).replace(/[-_]/g, ' ') : status;
+  };
 
   const now = new Date();
   const upcoming = (data.jobs || []).filter(j => {
@@ -152,7 +165,7 @@ function CustomerPortal() {
           </div>
           <div className="portal-job-right">
             <span className="portal-status" style={{ background: `${statusColors[j.status]}15`, color: statusColors[j.status] }}>
-              {j.status}
+              {getStatusLabel(j.status)}
             </span>
             {(j.charge || j.price) > 0 && <span className="portal-job-price">€{Number(j.charge || j.price).toFixed(2)}</span>}
             <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} portal-chevron`}></i>
@@ -262,9 +275,11 @@ function CustomerPortal() {
           <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>
             <i className="fas fa-briefcase"></i> My {terminology.jobs}
           </button>
-          <button className={tab === 'quotes' ? 'active' : ''} onClick={() => setTab('quotes')}>
-            <i className="fas fa-file-invoice"></i> Quotes
-          </button>
+          {hasQuotes && (
+            <button className={tab === 'quotes' ? 'active' : ''} onClick={() => setTab('quotes')}>
+              <i className="fas fa-file-invoice"></i> Quotes
+            </button>
+          )}
         </div>
 
         {/* Success banner */}
@@ -335,20 +350,22 @@ function CustomerPortal() {
         {showRequest && (
           <div className="portal-modal-overlay" onClick={() => setShowRequest(false)}>
             <div className="portal-modal" onClick={e => e.stopPropagation()}>
-              <h3>Request a New Job</h3>
+              <h3>Request a New {terminology.job}</h3>
               <p className="portal-modal-desc">Tell us what you need and we'll get back to you.</p>
               <div className="portal-form-group">
                 <label>What do you need?</label>
-                <input value={reqForm.service_type} onChange={e => setReqForm({ ...reqForm, service_type: e.target.value })} placeholder="e.g. Boiler repair, Plumbing, Electrical..." />
+                <input value={reqForm.service_type} onChange={e => setReqForm({ ...reqForm, service_type: e.target.value })} placeholder={`e.g. ${industryType === 'restaurant' ? 'Private dining, Large group booking...' : industryType === 'salon' ? 'Haircut, Colour, Blowdry...' : 'Boiler repair, Plumbing, Electrical...'}`} />
               </div>
               <div className="portal-form-group">
                 <label>Description (optional)</label>
-                <textarea value={reqForm.description} onChange={e => setReqForm({ ...reqForm, description: e.target.value })} placeholder="Any details about the job..." rows={3} />
+                <textarea value={reqForm.description} onChange={e => setReqForm({ ...reqForm, description: e.target.value })} placeholder={`Any details about the ${terminology.job.toLowerCase()}...`} rows={3} />
               </div>
-              <div className="portal-form-group">
-                <label>Address (optional)</label>
-                <input value={reqForm.address} onChange={e => setReqForm({ ...reqForm, address: e.target.value })} placeholder="Job address" />
-              </div>
+              {(portalFeatures?.job_address ?? localProfile.features?.jobAddress ?? true) && (
+                <div className="portal-form-group">
+                  <label>Address (optional)</label>
+                  <input value={reqForm.address} onChange={e => setReqForm({ ...reqForm, address: e.target.value })} placeholder={`${terminology.job} address`} />
+                </div>
+              )}
               <div className="portal-modal-actions">
                 <button className="portal-btn-secondary" onClick={() => setShowRequest(false)}>Cancel</button>
                 <button className="portal-btn-primary" onClick={handleRequest} disabled={!reqForm.service_type.trim() || submitting}>
