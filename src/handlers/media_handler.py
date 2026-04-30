@@ -1278,10 +1278,25 @@ async def media_handler(ws):
                         print(f"[DEBUG] Dropped (MIN_WORDS): '{text}' words={len(text.split())}")
                         continue
                     
-                    # Duplicate check — allow repeats if TTS failed or enough time passed
+                    # Duplicate check — allow repeats if TTS failed, enough time passed,
+                    # or the AI asked a DIFFERENT question since the last committed message.
+                    # This prevents dropping legitimate confirmations like "Yeah. That's correct."
+                    # said once for name and once for address.
                     if norm_text(text) == norm_text(last_committed):
                         time_since_committed = time_module.time() - last_committed_at
-                        if last_tts_success and time_since_committed < DUPLICATE_EXPIRY:
+                        # Check if the AI responded since the last committed message —
+                        # if so, the caller is answering a NEW question, not repeating themselves
+                        ai_responded_since = False
+                        if conversation_log:
+                            for _entry in reversed(conversation_log):
+                                if _entry.get("role") == "user":
+                                    break  # Hit the last user message — no AI response in between
+                                if _entry.get("role") == "assistant":
+                                    ai_responded_since = True
+                                    break
+                        if ai_responded_since:
+                            print(f"[DEBUG] Allowing repeat: '{text}' (AI responded since last identical message — new question context)")
+                        elif last_tts_success and time_since_committed < DUPLICATE_EXPIRY:
                             print(f"[DEBUG] Dropped (DUPLICATE): '{text}' == '{last_committed}'")
                             continue
                         else:

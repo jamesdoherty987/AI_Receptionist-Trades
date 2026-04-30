@@ -1969,7 +1969,28 @@ class PostgreSQLDatabaseWrapper:
                 # DOB provided but no match found - create new client
                 return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
             
-            # No DOB provided - fall back to matching by normalized name + contact info
+            # FIRST PRIORITY: Match by phone number alone (prevents duplicate clients
+            # when the LLM passes a different name for the same phone number, e.g.
+            # ASR mishears "Yeah it's correct" as "Christie" and LLM uses that as name)
+            if normalized_phone:
+                for client in all_clients:
+                    client_normalized_phone = normalize_phone_for_comparison(client.get('phone') or '')
+                    if client_normalized_phone == normalized_phone:
+                        print(f"[DB_CLIENT] ✅ Found existing client by phone: {client['name']} (ID: {client['id']})")
+                        # Update email if we have a new one and client doesn't have one
+                        if normalized_email and not (client.get('email') or '').strip():
+                            try:
+                                cursor.execute(
+                                    "UPDATE clients SET email = %s WHERE id = %s",
+                                    (email, client['id'])
+                                )
+                                conn.commit()
+                                print(f"[DB_CLIENT] 📧 Updated email for client {client['id']}: {email}")
+                            except Exception as e:
+                                print(f"[DB_CLIENT] ⚠️ Failed to update email: {e}")
+                        return client['id']
+            
+            # SECOND PRIORITY: Match by normalized name + contact info
             for client in all_clients:
                 client_normalized_name = normalize_name_for_comparison(client['name'])
                 

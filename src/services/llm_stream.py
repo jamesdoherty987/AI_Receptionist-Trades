@@ -2078,6 +2078,28 @@ TOOL RULES:
                 # AUTO-INJECT stored address for book_job if LLM forgot to include it
                 # This is a common issue: the caller confirms their address but the LLM
                 # doesn't pass it in the book_job arguments, causing the booking to fail.
+                
+                # AUTO-INJECT returning customer's name for book_job
+                # The LLM sometimes uses a hallucinated name from ASR mishearing
+                # (e.g. "Yeah it's correct" → "Christie") instead of the confirmed name.
+                # If the phone lookup identified a returning customer and the caller
+                # confirmed their name, use the confirmed name.
+                if tool_name in ('book_job', 'book_appointment') and call_state:
+                    _llm_name = arguments.get('customer_name', '')
+                    _confirmed_name = call_state.get('customer_name', '')
+                    _caller_identified = call_state.get('caller_identified', False)
+                    if _confirmed_name and _caller_identified and _llm_name:
+                        # Normalize for comparison
+                        from src.utils.security import normalize_name_for_comparison
+                        _norm_llm = normalize_name_for_comparison(_llm_name)
+                        _norm_confirmed = normalize_name_for_comparison(_confirmed_name)
+                        if _norm_llm != _norm_confirmed:
+                            # LLM is using a different name than the confirmed returning customer
+                            # Override with the confirmed name
+                            print(f"   👤 [AUTO-INJECT] Overriding customer_name: '{_llm_name}' → '{_confirmed_name}' (returning customer confirmed)")
+                            arguments['customer_name'] = _confirmed_name
+                            tool_call["function"]["arguments"] = json.dumps(arguments)
+                
                 if tool_name in ('book_job', 'book_appointment') and not arguments.get('job_address'):
                     stored_addr = call_state.get("customer_address", "") if call_state else ""
                     
@@ -2902,11 +2924,22 @@ TOOL RULES:
                             if msg.get("role") == "assistant"
                         )
                         
+                        # Also check if returning customer already has email on file
+                        _has_email_on_file = False
+                        if call_state:
+                            # Check system message for "EMAIL ON FILE" indicator
+                            for _msg in messages:
+                                if _msg.get("role") == "system":
+                                    _sys_content = (_msg.get("content") or "").upper()
+                                    if "EMAIL ON FILE" in _sys_content and "NO EMAIL ON FILE" not in _sys_content:
+                                        _has_email_on_file = True
+                                        break
+                        
                         if not _has_name:
                             direct_response = "Can I get your name please, and spell it out for me if possible?"
                         elif not _has_address:
                             direct_response = "Do you know your eircode?"
-                        elif not _email_asked:
+                        elif not _email_asked and not _has_email_on_file:
                             direct_response = "And can I get an email address for the account? Please spell it out for me letter by letter."
                         else:
                             # All info gathered — this shouldn't happen, let LLM handle
