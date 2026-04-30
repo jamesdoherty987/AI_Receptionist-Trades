@@ -1779,15 +1779,32 @@ TOOL RULES:
             user_wants_reschedule = detected_intent == "RESCHEDULE" or any(w in user_text.lower() for w in reschedule_words)
             # Multi-turn: check if reschedule_job was already called earlier in this conversation
             # BUT skip this if the user is now explicitly asking to cancel
+            # AND skip if the reschedule call FAILED (e.g. "no bookings found") — that means
+            # the LLM called reschedule_job by mistake and we're NOT in a reschedule flow.
             if not user_wants_reschedule and not user_explicitly_cancelling:
-                for msg in messages:
+                _reschedule_succeeded = False
+                for i, msg in enumerate(messages):
                     if msg.get("role") == "assistant" and msg.get("tool_calls"):
                         for tc in msg["tool_calls"]:
                             if tc.get("function", {}).get("name") in ("reschedule_job", "reschedule_appointment"):
-                                user_wants_reschedule = True
-                                break
-                    if user_wants_reschedule:
+                                # Check if the corresponding tool result was successful
+                                _tc_id = tc.get("id")
+                                _result_success = False
+                                for _rmsg in messages[i+1:]:
+                                    if _rmsg.get("role") == "tool" and _rmsg.get("tool_call_id") == _tc_id:
+                                        try:
+                                            _result_data = json.loads(_rmsg.get("content", "{}"))
+                                            _result_success = _result_data.get("success", False) or _result_data.get("requires_confirmation", False)
+                                        except:
+                                            pass
+                                        break
+                                if _result_success:
+                                    _reschedule_succeeded = True
+                                    break
+                    if _reschedule_succeeded:
                         break
+                if _reschedule_succeeded:
+                    user_wants_reschedule = True
             # Multi-turn fallback: check if ANY earlier user message mentioned reschedule
             # This catches the case where turn 1 was "I want to reschedule" (no tool call),
             # and turn 2 is "this Thursday" (LLM calls cancel_job instead of reschedule_job)
@@ -2585,7 +2602,7 @@ TOOL RULES:
                         # Check if this was blocked by ADDRESS_GUARD — if so, let the error
                         # flow back to the LLM so it can ask about the address
                         _error_msg = result_content.get("error", "")
-                        if "must confirm" in _error_msg or "STOP" in _error_msg:
+                        if "must confirm" in _error_msg or "STOP" in _error_msg or "reschedule" in _error_msg.lower():
                             direct_response = None  # Let LLM see the guard error and act on it
                             print(f"   🚫 [DIRECT] get_next_available BLOCKED by guard — passing error to LLM")
                         else:
@@ -2657,10 +2674,10 @@ TOOL RULES:
                         else:
                             direct_response = "I don't have anything available then. Would you like to try different dates?"
                     else:
-                        # Check if this was blocked by ADDRESS_GUARD — if so, let the error
-                        # flow back to the LLM so it can ask about the address
+                        # Check if this was blocked by a guard — if so, let the error
+                        # flow back to the LLM so it can handle it properly
                         _error_msg = result_content.get("error", "")
-                        if "must confirm" in _error_msg or "STOP" in _error_msg:
+                        if "must confirm" in _error_msg or "STOP" in _error_msg or "reschedule" in _error_msg.lower():
                             direct_response = None  # Let LLM see the guard error and act on it
                             print(f"   🚫 [DIRECT] search_availability BLOCKED by guard — passing error to LLM")
                         else:
@@ -2730,7 +2747,7 @@ TOOL RULES:
                             # Ask the caller for specific availability instead of a confusing error
                             direct_response = None  # Let LLM handle — it will see the error and ask for specifics
                             print(f"   🚫 [DIRECT] book_job date parse failed — falling through to LLM to check availability")
-                        elif "STOP" in error:
+                        elif "STOP" in error or "Cannot book" in error or "reschedule" in error.lower():
                             # Guard blocked the booking — let LLM handle the error and follow instructions
                             direct_response = None
                             print(f"   🚫 [DIRECT] book_job blocked by guard — falling through to LLM")
@@ -2746,7 +2763,10 @@ TOOL RULES:
                             else:
                                 direct_response = "I'm missing some details. Could you confirm the time you'd like?"
                         else:
-                            direct_response = "I couldn't complete that booking. Could you try again?"
+                            # Unknown error — let LLM handle it with full context rather than
+                            # showing a generic unhelpful message to the caller
+                            direct_response = None
+                            print(f"   🚫 [DIRECT] book_job unknown error — falling through to LLM: {error[:80]}")
                     
                     print(f"   ⚡ [DIRECT] book -> '{direct_response[:50]}...')")
                 
