@@ -2046,6 +2046,28 @@ TOOL RULES:
                         for _msg in messages
                     )
                     
+                    # GUARD: Block book_job if availability was never checked first.
+                    # The LLM sometimes skips get_next_available and jumps straight to
+                    # book_job with a vague datetime like "tomorrow", which always fails.
+                    if not _book_already_attempted:
+                        _availability_checked = any(
+                            _msg.get("role") == "assistant" and _msg.get("tool_calls") and
+                            any(_tc.get("function", {}).get("name") in ("get_next_available", "check_availability", "search_availability") for _tc in _msg.get("tool_calls", []))
+                            for _msg in messages
+                        )
+                        if not _availability_checked:
+                            print(f"   🚫 [AVAIL_GUARD] BLOCKED book_job — availability was never checked. Redirecting to get_next_available.")
+                            tool_results.append({
+                                "tool_call_id": tool_call["id"],
+                                "role": "tool",
+                                "name": tool_name,
+                                "content": json.dumps({
+                                    "success": False,
+                                    "error": "STOP. You must check availability FIRST using get_next_available before booking. Present the available times to the caller and let them choose."
+                                })
+                            })
+                            continue
+                    
                     if not _book_already_attempted:
                         # First book_job attempt — check if the AI confirmed with the caller
                         _prev_ai = ""
@@ -2703,6 +2725,15 @@ TOOL RULES:
                         error = result_content.get("error", result_content.get("message", ""))
                         if "not available" in error.lower() or "already booked" in error.lower():
                             direct_response = "That time slot just got taken. Would you like to try a different time?"
+                        elif "could not parse" in error.lower() or "date" in error.lower() and "time" in error.lower():
+                            # Date/time parsing failed — the LLM passed a vague datetime like "tomorrow"
+                            # Ask the caller for specific availability instead of a confusing error
+                            direct_response = None  # Let LLM handle — it will see the error and ask for specifics
+                            print(f"   🚫 [DIRECT] book_job date parse failed — falling through to LLM to check availability")
+                        elif "STOP" in error:
+                            # Guard blocked the booking — let LLM handle the error and follow instructions
+                            direct_response = None
+                            print(f"   🚫 [DIRECT] book_job blocked by guard — falling through to LLM")
                         elif "missing" in error.lower() or "address" in error.lower():
                             # Specific error about missing address — tell the caller what's needed
                             if "address" in error.lower():
