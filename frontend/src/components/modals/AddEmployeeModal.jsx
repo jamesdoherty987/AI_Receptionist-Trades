@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createEmployee } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import ImageUpload from '../ImageUpload';
 import HelpTooltip from '../HelpTooltip';
 
@@ -20,8 +21,7 @@ function AddEmployeeModal({ isOpen, onClose }) {
   const mutation = useMutation({
     mutationFn: createEmployee,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      invalidateRelated(queryClient, 'employees');
       onClose();
       setFormData({ name: '', phone: '', email: '', specialty: '', image_url: '' });
       addToast('Employee added successfully!', 'success');

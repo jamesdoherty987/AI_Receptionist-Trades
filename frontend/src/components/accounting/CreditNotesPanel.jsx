@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { getCreditNotes, createCreditNote, getClients, getBookings, processStripeRefund } from '../../services/api';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import LoadingSpinner from '../LoadingSpinner';
 
 const REFUND_METHOD_OPTIONS = [
@@ -59,12 +60,7 @@ function CreditNotesPanel() {
       stripe_refund: data.refund_method === 'stripe',
     }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'creditNotes');
       if (res.data?.stripe_refund_status === 'success') {
         addToast(`Credit note created and €${parseFloat(formData.amount).toFixed(2)} refunded to card (${res.data.stripe_refund_id})`, 'success');
       } else if (res.data?.stripe_refund_error) {
@@ -82,12 +78,7 @@ function CreditNotesPanel() {
   const refundMut = useMutation({
     mutationFn: (creditNoteId) => processStripeRefund(creditNoteId),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      invalidateRelated(queryClient, 'creditNotes');
       if (res.data?.stripe_refund_status === 'success') {
         addToast(`Stripe refund processed (${res.data.stripe_refund_id})`, 'success');
       } else {

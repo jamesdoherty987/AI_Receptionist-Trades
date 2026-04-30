@@ -20,6 +20,7 @@ import {
 } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import ImageUpload from '../ImageUpload';
 import { formatPriceRange } from '../../utils/helpers';
 import HelpTooltip from '../HelpTooltip';
@@ -207,8 +208,7 @@ function ServicesTab() {
   const createMutation = useMutation({
     mutationFn: createService,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'services');
       addToast(`${terminology.service || 'Service'} added!`, 'success');
       setShowAddForm(false);
       setFormData({ ...EMPTY_FORM });
@@ -219,8 +219,7 @@ function ServicesTab() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => updateService(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'services');
       addToast(`${terminology.service || 'Service'} updated!`, 'success');
       setEditingId(null);
     },
@@ -241,8 +240,7 @@ function ServicesTab() {
       return { previousServices };
     },
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'services');
       const jobsAffected = response.data?.jobs_affected || 0;
       addToast(`${terminology.service || 'Service'} deleted${jobsAffected > 0 ? ` (${jobsAffected} ${terminology.job?.toLowerCase() || 'job'}${jobsAffected !== 1 ? 's' : ''} used this ${(terminology.service || 'service').toLowerCase()})` : ''}`, 'success');
       setDeleteConfirm({ show: false, service: null });
@@ -256,8 +254,7 @@ function ServicesTab() {
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, active }) => toggleServiceActive(id, active),
     onSuccess: (response, { active }) => {
-      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'services');
       addToast(`${terminology.service || 'Service'} ${active ? 'activated' : 'deactivated'}`, 'success');
     },
     onError: () => addToast(`Failed to update ${(terminology.service || 'service').toLowerCase()} status`, 'error'),

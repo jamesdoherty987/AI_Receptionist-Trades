@@ -4,6 +4,7 @@ import Modal from './Modal';
 import { formatCurrency } from '../../utils/helpers';
 import { createQuote, updateBooking, sendQuote } from '../../services/api';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import DocumentPreview from '../accounting/DocumentPreview';
 
 function CreateQuoteFromJobModal({ isOpen, onClose, job }) {
@@ -37,9 +38,8 @@ function CreateQuoteFromJobModal({ isOpen, onClose, job }) {
       return res;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['booking', job.id] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'quotes');
       addToast('Quote created and linked to job', 'success');
       onClose();
     },
@@ -58,10 +58,8 @@ function CreateQuoteFromJobModal({ isOpen, onClose, job }) {
       return sendRes;
     },
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['booking', job.id] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'quotes');
       addToast(`Quote created & sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
       onClose();
     },

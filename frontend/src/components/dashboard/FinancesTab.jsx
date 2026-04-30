@@ -5,6 +5,7 @@ import { useIndustry } from '../../context/IndustryContext';
 import { getFinances, getExpenses, getRevenueEntries, createRevenueEntry, createExpense, getBookings, getInvoiceAging, updateBooking, getCreditNotes } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import ExpensesPanel from '../accounting/ExpensesPanel';
 import AgingPanel from '../accounting/AgingPanel';
 import PnlPanel from '../accounting/PnlPanel';
@@ -487,10 +488,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
   const createIncomeMut = useMutation({
     mutationFn: createRevenueEntry,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'finances');
       addToast('Income added', 'success');
       resetForm();
     },
@@ -500,10 +498,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
   const createExpenseMut = useMutation({
     mutationFn: createExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'expenses', 'finances');
       addToast('Expense added', 'success');
       resetForm();
     },
@@ -513,12 +508,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
   const markPaidMut = useMutation({
     mutationFn: (jobId) => updateBooking(jobId, { payment_status: 'paid', payment_method: 'manual' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      invalidateRelated(queryClient, 'finances', 'jobs');
       addToast(`${terminology.job || 'Job'} marked as paid`, 'success');
     },
     onError: () => addToast('Failed to update', 'error'),
@@ -527,12 +517,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
   const unmarkPaidMut = useMutation({
     mutationFn: (jobId) => updateBooking(jobId, { payment_status: 'unpaid', payment_method: null }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      invalidateRelated(queryClient, 'finances', 'jobs');
       addToast(`${terminology.job || 'Job'} marked as unpaid`, 'success');
     },
     onError: () => addToast('Failed to update', 'error'),

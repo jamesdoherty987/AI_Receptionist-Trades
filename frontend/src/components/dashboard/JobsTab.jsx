@@ -6,6 +6,7 @@ import { formatCurrency, getProxiedMediaUrl, parseServerDate } from '../../utils
 import { formatDuration } from '../../utils/durationOptions';
 import { updateBooking, getJobSetupData, sendInvoice } from '../../services/api';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
 import InvoiceConfirmModal from '../modals/InvoiceConfirmModal';
@@ -82,12 +83,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       return { previousDashboard };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      invalidateRelated(queryClient, 'finances', 'jobs');
       addToast(`${terminology.job} marked as paid`, 'success');
       setMarkingPaidJobId(null);
     },
@@ -115,12 +111,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       return { previousDashboard };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      invalidateRelated(queryClient, 'finances', 'jobs');
       addToast(`${terminology.job} marked as unpaid`, 'success');
       setMarkingPaidJobId(null);
     },
@@ -147,7 +138,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       return { previousDashboard };
     },
     onSuccess: (_, { jobId }) => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'jobs');
       setLocalStatusOverrides(prev => { const n = { ...prev }; delete n[jobId]; return n; });
     },
     onError: (_, { jobId }, context) => {
@@ -180,10 +171,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       if (data && !data.has_payment_link) msg += ' (no payment link)';
       addToast(msg, 'success');
       setInvoiceJob(null);
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      invalidateRelated(queryClient, 'jobs', 'finances');
     },
     onError: (error) => addToast(error.response?.data?.error || 'Failed to send invoice', 'error'),
   });

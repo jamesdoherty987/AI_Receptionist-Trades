@@ -5,6 +5,7 @@ import Modal from './Modal';
 import JobDetailModal from './JobDetailModal';
 import { useToast } from '../Toast';
 import { formatPhone, formatDateTime, getStatusBadgeClass, formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import './CustomerDetailModal.css';
 
 function CustomerDetailModal({ isOpen, onClose, clientId }) {
@@ -105,7 +106,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     },
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ['client', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'customers');
       setIsEditing(false);
       addToast('Customer updated successfully!', 'success');
     },
@@ -135,8 +136,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       return { previousDashboard };
     },
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      invalidateRelated(queryClient, 'customers', 'jobs', 'finances');
       setShowDeleteConfirm(false);
       onClose();
       const bookingsDeleted = response.data?.bookings_deleted || 0;
@@ -156,7 +156,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     mutationFn: (note) => addClientNote(clientId, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'customers');
       setNewNote('');
       setIsAddingNote(false);
       addToast('Note added successfully!', 'success');

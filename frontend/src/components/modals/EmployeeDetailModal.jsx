@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getEmployee, updateEmployee, deleteEmployee, getEmployeeJobs, getEmployeeHoursThisWeek, inviteEmployee, getEmployeeWorkSchedule, updateEmployeeWorkSchedule } from '../../services/api';
 import Modal from './Modal';
 import MessageEmployeeModal from './MessageEmployeeModal';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
 import JobDetailModal from './JobDetailModal';
@@ -75,8 +76,8 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
       queryClient.invalidateQueries({ queryKey: ['employee-schedules'] });
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
       queryClient.invalidateQueries({ queryKey: ['employee-hours', employeeId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['all-work-schedules'] });
+      invalidateRelated(queryClient, 'employees', 'calendar');
       addToast('Work schedule saved', 'success');
     },
     onError: (err) => addToast('Error saving schedule: ' + (err.response?.data?.error || err.message), 'error'),
@@ -92,7 +93,7 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'employees');
       setIsEditing(false);
       addToast('Employee updated successfully!', 'success');
     },
@@ -116,8 +117,7 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
       return { previousDashboard };
     },
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      invalidateRelated(queryClient, 'employees', 'jobs');
       setShowDeleteConfirm(false); onClose();
       const n = response.data?.assignments_removed || 0;
       addToast(`Employee deleted${n > 0 ? ` (removed from ${n} job${n !== 1 ? 's' : ''})` : ''}`, 'success');

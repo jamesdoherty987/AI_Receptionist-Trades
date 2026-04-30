@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/helpers';
 import { getPnlReport, createExpense, createCreditNote } from '../../services/api';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import LoadingSpinner from '../LoadingSpinner';
 
 function PnlPanel() {
@@ -142,9 +143,7 @@ function PnlPanel() {
                   const amt = parseFloat(adjustment.amount);
                   const date = adjustment.date || new Date().toISOString().split('T')[0];
                   const done = () => {
-                    queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-                    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-                    queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
+                    invalidateRelated(queryClient, 'expenses', 'creditNotes');
                     setShowAdjustment(false);
                     setAdjustment({ type: 'revenue', description: '', amount: '', category: 'other', date: '' });
                   };

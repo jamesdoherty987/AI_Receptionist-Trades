@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { getInvoiceAging, sendInvoice } from '../../services/api';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import LoadingSpinner from '../LoadingSpinner';
 
 const BUCKET_COLORS = {
@@ -34,9 +35,7 @@ function AgingPanel() {
     mutationFn: (bookingId) => sendInvoice(bookingId),
     onSuccess: (res) => {
       addToast(`Reminder sent to ${res.data?.sent_to || 'customer'}`, 'success');
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      invalidateRelated(queryClient, 'finances', 'jobs');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send reminder', 'error'),
   });

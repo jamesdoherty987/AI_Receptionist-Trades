@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { getExpenses, createExpense, updateExpense, deleteExpense } from '../../services/api';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import LoadingSpinner from '../LoadingSpinner';
 
 const EXPENSE_CATEGORIES = [
@@ -44,9 +45,7 @@ function ExpensesPanel() {
   const createMut = useMutation({
     mutationFn: createExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      invalidateRelated(queryClient, 'expenses');
       addToast('Expense added', 'success');
       resetForm();
     },
@@ -56,9 +55,7 @@ function ExpensesPanel() {
   const updateMut = useMutation({
     mutationFn: ({ id, data }) => updateExpense(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      invalidateRelated(queryClient, 'expenses');
       addToast('Expense updated', 'success');
       resetForm();
     },
@@ -68,9 +65,7 @@ function ExpensesPanel() {
   const deleteMut = useMutation({
     mutationFn: deleteExpense,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      invalidateRelated(queryClient, 'expenses');
       addToast('Expense deleted', 'success');
       setDeleteConfirm(null);
     },

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient, employeeCreateClient } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import HelpTooltip from '../HelpTooltip';
 import './AddClientModal.css';
 
@@ -21,7 +22,7 @@ function AddClientModal({ isOpen, onClose, employeeMode = false }) {
   const mutation = useMutation({
     mutationFn: employeeMode ? employeeCreateClient : createClient,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'customers');
       onClose();
       setFormData({ name: '', phone: '', email: '', address: '', eircode: '', notes: '' });
       addToast('Customer added successfully!', 'success');

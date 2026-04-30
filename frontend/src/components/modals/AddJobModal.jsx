@@ -7,6 +7,7 @@ import {
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import { useIndustry } from '../../context/IndustryContext';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import AddClientModal from './AddClientModal';
 import HelpTooltip from '../HelpTooltip';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
@@ -254,14 +255,9 @@ function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId 
   const mutation = useMutation({
     mutationFn: apiFns.createBooking,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['availability'] });
-      queryClient.invalidateQueries({ queryKey: ['monthly-availability'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      invalidateRelated(queryClient, 'jobs', 'calendar', 'finances', 'customers');
       if (employeeMode) {
-        queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
+        invalidateRelated(queryClient, 'employeeDashboard');
       }
       onClose();
       addToast(`${terminology.job} created successfully!`, 'success');

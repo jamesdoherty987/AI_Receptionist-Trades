@@ -71,12 +71,34 @@
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
 
-    <!-- Font Awesome Icons — non-blocking -->
+    <!-- Font Awesome Icons — non-blocking with in-app browser fallback -->
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" /></noscript>
     <!-- Google Fonts — non-blocking, reduced weight range -->
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" /></noscript>
+    <!-- Fallback: in-app browsers (LinkedIn, Facebook, Instagram) often fail the preload/onload trick -->
+    <script>
+      (function(){
+        // Detect in-app browsers or force-load after timeout regardless
+        var isInApp = /FBAN|FBAV|Instagram|LinkedInApp|Twitter|Snapchat|Line\//i.test(navigator.userAgent);
+        function forceStylesheets() {
+          var links = document.querySelectorAll('link[rel="preload"][as="style"]');
+          links.forEach(function(link) { if (link.rel === 'preload') { link.rel = 'stylesheet'; } });
+        }
+        if (isInApp) {
+          // In-app browser detected — load stylesheets immediately (skip preload optimization)
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', forceStylesheets);
+          } else {
+            forceStylesheets();
+          }
+        } else {
+          // Normal browser — safety net in case onload doesn't fire (e.g. cached resources)
+          setTimeout(forceStylesheets, 3000);
+        }
+      })();
+    </script>
 
     <!-- Structured Data — Organization -->
     <script type="application/ld+json">

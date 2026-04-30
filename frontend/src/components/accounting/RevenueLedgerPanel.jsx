@@ -4,6 +4,7 @@ import { formatCurrency, formatDate } from '../../utils/helpers';
 import { getRevenueEntries, createRevenueEntry, updateRevenueEntry, deleteRevenueEntry, getBookings } from '../../services/api';
 import { useIndustry } from '../../context/IndustryContext';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import LoadingSpinner from '../LoadingSpinner';
 
 const REVENUE_CATEGORIES = [
@@ -81,10 +82,7 @@ function RevenueLedgerPanel() {
   const createMut = useMutation({
     mutationFn: createRevenueEntry,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'finances');
       addToast('Revenue entry added', 'success');
       resetForm();
     },
@@ -94,10 +92,7 @@ function RevenueLedgerPanel() {
   const updateMut = useMutation({
     mutationFn: ({ id, data }) => updateRevenueEntry(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'finances');
       addToast('Entry updated', 'success');
       resetForm();
     },
@@ -107,10 +102,7 @@ function RevenueLedgerPanel() {
   const deleteMut = useMutation({
     mutationFn: deleteRevenueEntry,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'finances');
       addToast('Entry deleted', 'success');
       setDeleteConfirm(null);
     },

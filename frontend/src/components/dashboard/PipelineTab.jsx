@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, memo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../Toast';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import {
   getQuotePipeline, updateQuotePipelineStage, sendQuoteFollowUp,
   generateQuoteAcceptLink, getSequences, createSequence, updateSequence,
@@ -60,7 +61,7 @@ function PipelineTab() {
       }
       return { previous };
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] }); queryClient.invalidateQueries({ queryKey: ['quotes'] }); },
+    onSuccess: () => { invalidateRelated(queryClient, 'quotes'); },
     onError: (e, vars, context) => {
       if (context?.previous) queryClient.setQueryData(['quote-pipeline'], context.previous);
       addToast(e.response?.data?.error || 'Failed to update stage', 'error');
@@ -69,7 +70,7 @@ function PipelineTab() {
 
   const followUpMut = useMutation({
     mutationFn: ({ id, message }) => sendQuoteFollowUp(id, message),
-    onSuccess: (res) => { addToast(`Follow-up sent via ${res.data?.sent_via}`, 'success'); queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] }); setFollowUpModal(null); setFollowUpMsg(''); },
+    onSuccess: (res) => { addToast(`Follow-up sent via ${res.data?.sent_via}`, 'success'); invalidateRelated(queryClient, 'quotes'); setFollowUpModal(null); setFollowUpMsg(''); },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send', 'error'),
   });
 

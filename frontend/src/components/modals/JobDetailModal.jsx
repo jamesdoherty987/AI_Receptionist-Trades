@@ -43,6 +43,7 @@ import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOp
 import HelpTooltip from '../HelpTooltip';
 import CreateQuoteFromJobModal from './CreateQuoteFromJobModal';
 import DocumentPreview from '../accounting/DocumentPreview';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import './JobDetailModal.css';
 
 function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
@@ -231,10 +232,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return res;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'jobs', 'quotes');
       setEditingQuoteId(null);
       addToast('Quote updated', 'success');
     },
@@ -244,8 +243,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const sendQuoteMut = useMutation({
     mutationFn: (quoteId) => sendQuote(quoteId),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
+      invalidateRelated(queryClient, 'quotes');
       addToast(`Quote sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send quote', 'error'),
@@ -254,9 +252,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const deleteQuoteMut = useMutation({
     mutationFn: (quoteId) => deleteQuote(quoteId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      invalidateRelated(queryClient, 'quotes');
       addToast('Quote deleted', 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to delete quote', 'error'),
@@ -379,12 +376,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onSuccess: (res) => {
       setConflictWarning(null);
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
+      invalidateRelated(queryClient, 'jobs', 'quotes', 'finances', 'employeeDashboard');
       setIsEditing(false);
       const timeChanged = res?.data?.time_changed || res?.data?.duration_changed;
       addToast(`${terminology.job || 'Job'} updated successfully!${timeChanged ? ' Customer notified.' : ''}`, 'success');
@@ -418,11 +410,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['reviews'] });
+      invalidateRelated(queryClient, 'jobs', 'finances', 'reviews', 'customers');
       addToast('Status updated successfully!', 'success');
     },
     onError: (error, variables, context) => {
@@ -451,8 +439,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['job-employees', jobId] });
       queryClient.invalidateQueries({ queryKey: ['available-employees', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      invalidateRelated(queryClient, 'jobs');
       setShowAssignEmployee(false);
       setSelectedEmployeeId('');
       setForceAssign(false);
@@ -487,8 +474,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-employees', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      invalidateRelated(queryClient, 'jobs');
       addToast('Employee removed', 'success');
     },
     onError: (error, variables, context) => {
@@ -512,10 +498,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       setShowInvoiceConfirm(false);
       setInvoiceData(null);
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      invalidateRelated(queryClient, 'jobs', 'finances');
     },
     onError: (error) => {
       addToast(error.response?.data?.error || 'Failed to send invoice', 'error');
@@ -551,9 +534,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     mutationFn: (reason) => rejectBooking(jobId, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      invalidateRelated(queryClient, 'jobs', 'finances');
       setShowRejectModal(false);
       setRejectReason('');
       addToast(`${terminology.job || 'Job'} rejected and ${(terminology.client || 'customer').toLowerCase()} notified`, 'success');
@@ -566,12 +547,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onSuccess: (res) => {
       const d = res.data;
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      invalidateRelated(queryClient, 'creditNotes');
       setShowRefundModal(false);
       if (d.stripe_refund_status === 'success') {
         addToast(`Refund of €${d.amount} processed via Stripe`, 'success');
@@ -588,12 +564,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     mutationFn: () => updateBooking(jobId, { payment_status: 'paid', payment_method: 'manual' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      invalidateRelated(queryClient, 'finances', 'jobs');
       addToast(`${terminology.job || 'Job'} marked as paid`, 'success');
     },
     onError: () => addToast(`Failed to mark ${(terminology.job || 'job').toLowerCase()} as paid`, 'error'),
@@ -603,12 +574,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     mutationFn: () => updateBooking(jobId, { payment_status: 'unpaid', payment_method: null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      invalidateRelated(queryClient, 'finances', 'jobs');
       addToast('Payment status reverted to unpaid', 'success');
     },
     onError: () => addToast('Failed to update payment status', 'error'),

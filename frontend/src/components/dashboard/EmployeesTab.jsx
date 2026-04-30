@@ -5,6 +5,7 @@ import { useIndustry } from '../../context/IndustryContext';
 import { useToast } from '../Toast';
 import { getEmployeeHoursThisWeek, getEmployeesHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts, getEmployeeSchedule, getBusinessHours, getAllEmployeeWorkSchedules } from '../../services/api';
 import { parseServerDate } from '../../utils/helpers';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import MessageEmployeeModal from '../modals/MessageEmployeeModal';
 import AddEmployeeModal from '../modals/AddEmployeeModal';
 import EmployeeDetailModal from '../modals/EmployeeDetailModal';
@@ -143,7 +144,7 @@ function EmployeesTab({ employees, bookings }) {
     onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: ['company-time-off'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-time-off'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'employees', 'calendar');
       const data = response.data;
       if (variables.status === 'approved' && data?.has_conflicts && data.conflicting_jobs?.length > 0) {
         const jobList = data.conflicting_jobs.map(j => `${j.date}: ${j.service}${j.client ? ` (${j.client})` : ''}`).join(', ');

@@ -5,6 +5,7 @@ import { useIndustry } from '../../context/IndustryContext';
 import { formatPhone, formatCurrency } from '../../utils/helpers';
 import { useToast } from '../Toast';
 import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews, generatePortalLink, triggerLostJobCallback, getOutboundCallsEnabled } from '../../services/api';
+import { invalidateRelated } from '../../utils/queryInvalidation';
 import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
 import EmailComposerModal from '../modals/EmailComposerModal';
@@ -103,9 +104,7 @@ function CrmTab({ clients, bookings = [] }) {
   const createMutation = useMutation({
     mutationFn: createLead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'leads');
       setShowAddLead(false);
       addToast('Lead created', 'success');
     },
@@ -127,9 +126,7 @@ function CrmTab({ clients, bookings = [] }) {
       return { previous };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'leads');
       setEditingLead(null);
     },
     onError: (e, variables, context) => {
@@ -153,9 +150,7 @@ function CrmTab({ clients, bookings = [] }) {
       return { previous };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'leads');
       addToast('Lead removed', 'success');
     },
     onError: (e, _, context) => {
@@ -167,9 +162,7 @@ function CrmTab({ clients, bookings = [] }) {
   const convertMutation = useMutation({
     mutationFn: convertLead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      invalidateRelated(queryClient, 'leads', 'customers');
       addToast('Lead converted to customer', 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to convert lead', 'error'),
